@@ -29,16 +29,16 @@ public class SecurityConfig extends WebSecurityConfigurerAdapter {
                         "/swagger-resources/**",
                         "/configuration/security",
                         "/swagger-ui/**",
-                        "/webjars/**").authenticated();
+                        "/webjars/**").permitAll();
 
         // others
-        http.authorizeRequests()
+        http.httpBasic()
+                .and().authorizeRequests()
+                .antMatchers("/admin/**").hasRole("ADMIN")
                 .anyRequest().authenticated()
-                .and().httpBasic()
                 .and().formLogin().permitAll()
                 .and().logout().permitAll()
-                .and().csrf().ignoringAntMatchers("/timeslot/**");
-
+                .and().csrf().disable();
     }
 
 

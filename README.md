@@ -72,3 +72,6 @@ INSERT INTO authorities (username, authority)
 values ('user1', 'ROLE_USER');
 
 ```
+
+
+

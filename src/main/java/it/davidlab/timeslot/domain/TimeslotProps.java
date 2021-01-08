@@ -12,6 +12,7 @@ public class TimeslotProps {
     private String description;
     private long price;
     private AssetType type;
+    private TsLocation tsLocation;
 
 
     public TimeslotProps() {
