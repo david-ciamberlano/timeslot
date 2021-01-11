@@ -15,8 +15,6 @@ import it.davidlab.timeslot.domain.AssetModel;
 import it.davidlab.timeslot.domain.AssetType;
 import it.davidlab.timeslot.domain.TimeslotProps;
 import it.davidlab.timeslot.dto.AssetInfo;
-import it.davidlab.timeslot.entity.AccountEntity;
-import it.davidlab.timeslot.repository.AccountRepo;
 import org.apache.commons.codec.digest.DigestUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
@@ -38,12 +36,10 @@ public class AdminController {
 
 
     private AlgoService algoService;
-    private AccountRepo accountRepo;
 
     private static final Logger logger = LoggerFactory.getLogger(AdminController.class);
 
-    public AdminController(AccountRepo accountRepo, AlgoService algoService) {
-        this.accountRepo = accountRepo;
+    public AdminController(AlgoService algoService) {
         this.algoService = algoService;
     }
 
@@ -52,13 +48,37 @@ public class AdminController {
     @ResponseBody
     public List<AssetInfo> timeslotList(Principal principal) throws Exception {
 
-        AccountEntity currentAccount = accountRepo.getByUsername(principal.getName());
-
-        Address accAddress = new Address(currentAccount.getAddress());
+        com.algorand.algosdk.account.Account adminAccount = algoService.getAccount(principal.getName());
 
         //TODO check execute() before call body()
         com.algorand.algosdk.v2.client.model.Account account =
-                algoService.getClient().AccountInformation(accAddress).execute().body();
+                algoService.getClient().AccountInformation(adminAccount.getAddress()).execute().body();
+
+        List<AssetHolding> assets = account.assets;
+
+        List<AssetInfo> assetInfo = new ArrayList<>();
+
+        assets.stream().filter(a -> !StringUtils.isEmpty(a.creator)).forEach(a -> {
+            Optional<AssetInfo> asset = algoService.getAssetProperties(a.assetId, a.amount.longValue());
+            asset.ifPresent(as -> {
+                as.setAmount(a.amount.longValue());
+                assetInfo.add(as);
+            });
+        });
+
+        return assetInfo;
+    }
+
+
+    @GetMapping(path = "/ticket/archived")
+    @ResponseBody
+    public List<AssetInfo> archivedTicket(Principal principal) throws Exception {
+
+        com.algorand.algosdk.account.Account adminAccount = algoService.getArchiveAccount();
+
+        //TODO check execute() before call body()
+        com.algorand.algosdk.v2.client.model.Account account =
+                algoService.getClient().AccountInformation(adminAccount.getAddress()).execute().body();
 
         List<AssetHolding> assets = account.assets;
 
@@ -87,11 +107,7 @@ public class AdminController {
     @ResponseBody
     public String createTsPool(@RequestBody AssetModel assetModel, Principal principal) throws Exception {
 
-        AccountEntity currentAccount = accountRepo.getByUsername(principal.getName());
-        Address adminAddress = new Address(currentAccount.getAddress());
-
-        com.algorand.algosdk.account.Account adminAccount =
-                new com.algorand.algosdk.account.Account(currentAccount.getPassphrase());
+        com.algorand.algosdk.account.Account adminAccount = algoService.getAdminAccount();
 
         boolean defaultFrozen = false;
         String unitName = assetModel.getUnitName();
@@ -100,10 +116,11 @@ public class AdminController {
         int assettDecimals = assetModel.getAssetDecimals();
         String url = assetModel.getUrl();
 
-        Address manager = adminAddress;
-        Address reserve = adminAddress;
-        Address freeze = adminAddress;
-        Address clawback = adminAddress;
+        //TODO is it necessary to set all the addresses?
+        Address manager = adminAccount.getAddress();
+        Address reserve = adminAccount.getAddress();;
+        Address freeze = adminAccount.getAddress();;
+        Address clawback = adminAccount.getAddress();;
 
         //TODO
         TransactionParametersResponse params = algoService.getClient().TransactionParams().execute().body();
@@ -116,14 +133,14 @@ public class AdminController {
         // Ticket Asset
         TimeslotProps tsParams = new TimeslotProps(startTimestamp, endTimestamp, -1, TimeUnit.HOURS,
                 description, price, AssetType.TICKET);
-        byte[] encTicketProps = Encoder.encodeToMsgPack(tsParams);
+
 
         byte[] encAssetProps = Encoder.encodeToMsgPack(tsParams);
         String assetRName = assetName;
         String unitRName = unitName;
 
         Transaction txTicket = Transaction.AssetCreateTransactionBuilder()
-                .sender(adminAddress)
+                .sender(adminAccount.getAddress())
                 .assetTotal(assetTotal)
                 .assetDecimals(assettDecimals)
                 .assetUnitName(unitRName)
@@ -171,14 +188,9 @@ public class AdminController {
 
     @PostMapping(value = "/timeslot/receipt/create", consumes = "application/json", produces = "application/json")
     @ResponseBody
-    public String createTsRcpPool(@RequestBody AssetModel assetModel, Principal principal) throws Exception {
+    public String createTsRcp(@RequestBody AssetModel assetModel, Principal principal) throws Exception {
 
-        AccountEntity currentAccount = accountRepo.getByUsername(principal.getName());
-
-        Address adminAddress = new Address(currentAccount.getAddress());
-
-        com.algorand.algosdk.account.Account adminAccount =
-                new com.algorand.algosdk.account.Account(currentAccount.getPassphrase());
+        com.algorand.algosdk.account.Account adminAccount = algoService.getAccount(principal.getName());
 
         boolean defaultFrozen = false;
         String unitName = assetModel.getUnitName();
@@ -187,10 +199,10 @@ public class AdminController {
         int assettDecimals = assetModel.getAssetDecimals();
         String url = assetModel.getUrl();
 
-        Address manager = adminAddress;
-        Address reserve = adminAddress;
-        Address freeze = adminAddress;
-        Address clawback = adminAddress;
+        Address manager = adminAccount.getAddress();
+        Address reserve = adminAccount.getAddress();;
+        Address freeze = adminAccount.getAddress();;
+        Address clawback = adminAccount.getAddress();;
 
         TransactionParametersResponse params = algoService.getClient().TransactionParams().execute().body();
 
@@ -208,7 +220,7 @@ public class AdminController {
         String unitTName = "<#>" + unitName;
 
         Transaction txT = Transaction.AssetCreateTransactionBuilder()
-                .sender(adminAddress)
+                .sender(adminAccount.getAddress())
                 .assetTotal(assetTotal)
                 .assetDecimals(assettDecimals)
                 .assetUnitName(unitTName)
@@ -233,7 +245,7 @@ public class AdminController {
         String unitRName = "<>" + unitName;
 
         Transaction txR = Transaction.AssetCreateTransactionBuilder()
-                .sender(adminAddress)
+                .sender(adminAccount.getAddress())
                 .assetTotal(assetTotal)
                 .assetDecimals(assettDecimals)
                 .assetUnitName(unitRName)

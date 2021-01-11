@@ -1,5 +1,6 @@
 package it.davidlab.timeslot.service;
 
+import com.algorand.algosdk.transaction.SignedTransaction;
 import com.algorand.algosdk.util.Encoder;
 import com.algorand.algosdk.v2.client.common.AlgodClient;
 import com.algorand.algosdk.v2.client.common.IndexerClient;
@@ -8,6 +9,8 @@ import com.algorand.algosdk.v2.client.model.*;
 import it.davidlab.timeslot.domain.TimeslotProps;
 import it.davidlab.timeslot.dto.AssetInfo;
 import it.davidlab.timeslot.dto.TxInfo;
+import it.davidlab.timeslot.entity.AccountEntity;
+import it.davidlab.timeslot.repository.AccountRepo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -15,7 +18,7 @@ import org.springframework.stereotype.Service;
 
 import javax.annotation.PostConstruct;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
+import java.security.GeneralSecurityException;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
@@ -39,10 +42,13 @@ class AlgoService {
     private AlgodClient client;
     private IndexerClient indexerClient;
 
+    private AccountRepo accountRepo;
+
     private static final Logger logger = LoggerFactory.getLogger(AlgoService.class);
 
 
-    protected AlgoService() {
+    protected AlgoService(AccountRepo accountRepo) {
+        this.accountRepo = accountRepo;
     }
 
     @PostConstruct
@@ -126,7 +132,10 @@ class AlgoService {
         // search for the ACFG transactions
         Response<TransactionsResponse> txResponse;
         try {
+            com.algorand.algosdk.account.Account adminAccount = getAdminAccount();
+
             txResponse = indexerClient.searchForTransactions()
+                    .address(adminAccount.getAddress()).addressRole(Enums.AddressRole.SENDER)
                     .assetId(asset).txType(Enums.TxType.ACFG).execute();
         } catch (Exception e) {
             logger.error(e.getMessage());
@@ -152,10 +161,67 @@ class AlgoService {
     }
 
 
-    TxInfo getTxParams(Transaction t, long ticketId) {
+    protected TxInfo getTxParams(Transaction t, long ticketId) {
 
         return new TxInfo(t.id, ticketId, t.assetTransferTransaction.amount.longValue(),
                 t.sender, t.assetTransferTransaction.receiver, t.roundTime, "");
+    }
+
+    protected com.algorand.algosdk.account.Account getAccount(String accountName) throws GeneralSecurityException {
+        AccountEntity consumerAccount = accountRepo.getByUsername(accountName);
+        return new com.algorand.algosdk.account.Account(consumerAccount.getPassphrase());
+    }
+
+
+    protected com.algorand.algosdk.account.Account getAdminAccount() throws GeneralSecurityException {
+        AccountEntity consumerAccount = accountRepo.getByUsername("admin");
+        return new com.algorand.algosdk.account.Account(consumerAccount.getPassphrase());
+    }
+
+    protected com.algorand.algosdk.account.Account getArchiveAccount() throws GeneralSecurityException {
+        AccountEntity consumerAccount = accountRepo.getByUsername("archive");
+        return new com.algorand.algosdk.account.Account(consumerAccount.getPassphrase());
+    }
+
+
+    /**
+     * Check if an account has opted-in for an asset
+     * @param assetId
+     * @param algoAccount
+     * @throws Exception
+     */
+    protected void checkOptIn(Long assetId, com.algorand.algosdk.account.Account algoAccount) throws Exception {
+        // check if receiver has opted in for the asset
+        Response<com.algorand.algosdk.v2.client.model.Account> accountResponse =
+                getClient().AccountInformation(algoAccount.getAddress()).execute();
+
+        if (accountResponse.isSuccessful()) {
+            List<AssetHolding> assets = accountResponse.body().assets;
+            if (!assets.stream().filter(a -> a.assetId.equals(assetId)).findFirst().isPresent()) {
+                optIn(assetId, algoAccount);
+            }
+        }
+    }
+
+    protected String optIn(long assetIndex, com.algorand.algosdk.account.Account optinAccount) throws Exception {
+
+        //TODO check execute() before calling body()
+        TransactionParametersResponse params = getClient().TransactionParams().execute().body();
+        params.fee = 1000L;
+
+        com.algorand.algosdk.transaction.Transaction tx = com.algorand.algosdk.transaction.Transaction
+                .AssetAcceptTransactionBuilder()
+                .acceptingAccount(optinAccount.getAddress())
+                .assetIndex(assetIndex)
+                .suggestedParams(params)
+                .build();
+
+        SignedTransaction signedTx = optinAccount.signTransaction(tx);
+        String txId = getClient().RawTransaction().rawtxn(Encoder.encodeToMsgPack(signedTx)).execute().body().txId;
+
+        waitForConfirmation(txId, 6);
+
+        return txId;
     }
 
 
