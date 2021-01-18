@@ -1,7 +1,8 @@
-package it.davidlab.timeslot.dto;
+package it.davidlab.timeslot.domain;
 
 
 import it.davidlab.timeslot.domain.AssetType;
+import it.davidlab.timeslot.domain.TsLocation;
 
 import java.util.concurrent.TimeUnit;
 
@@ -17,12 +18,14 @@ public class AssetInfo {
     private long duration;
     private TimeUnit timeUnit;
     private String description;
+    private TsLocation tsLocation;
     private long price;
     private AssetType type;
 
-    public AssetInfo(long assetId, String unitName, String assetName, String url, long amount, long startValidity,
-                     long endValidity, long duration, TimeUnit timeUnit, String description, long price, AssetType type) {
 
+    public AssetInfo(long assetId, String unitName, String assetName, String url, long amount, long startValidity,
+                     long endValidity, long duration, TimeUnit timeUnit, String description, TsLocation tsLocation,
+                     long price, AssetType type) {
         this.assetId = assetId;
         this.unitName = unitName;
         this.assetName = assetName;
@@ -33,6 +36,7 @@ public class AssetInfo {
         this.duration = duration;
         this.timeUnit = timeUnit;
         this.description = description;
+        this.tsLocation = tsLocation;
         this.price = price;
         this.type = type;
     }
@@ -88,4 +92,9 @@ public class AssetInfo {
     public AssetType getType() {
         return type;
     }
+
+    public TsLocation getTsLocation() {
+        return tsLocation;
+    }
+
 }

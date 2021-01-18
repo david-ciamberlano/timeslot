@@ -1,4 +1,5 @@
-package it.davidlab.timeslot.service;
+package it.davidlab.timeslot.controller;
+
 
 import com.algorand.algosdk.crypto.Address;
 import com.algorand.algosdk.crypto.Digest;
@@ -6,14 +7,16 @@ import com.algorand.algosdk.transaction.SignedTransaction;
 import com.algorand.algosdk.transaction.TxGroup;
 import com.algorand.algosdk.util.Encoder;
 import com.algorand.algosdk.v2.client.common.Response;
-import com.algorand.algosdk.v2.client.model.*;
+import com.algorand.algosdk.v2.client.model.AssetHolding;
+import com.algorand.algosdk.v2.client.model.Enums;
+import com.algorand.algosdk.v2.client.model.PostTransactionsResponse;
+import com.algorand.algosdk.v2.client.model.TransactionParametersResponse;
 import io.swagger.annotations.Api;
 import it.davidlab.timeslot.domain.AssetType;
 import it.davidlab.timeslot.domain.TimeslotProps;
-import it.davidlab.timeslot.dto.AssetInfo;
-import it.davidlab.timeslot.dto.TxInfo;
-import it.davidlab.timeslot.entity.AccountEntity;
-import it.davidlab.timeslot.repository.AccountRepo;
+import it.davidlab.timeslot.domain.AssetInfo;
+import it.davidlab.timeslot.domain.TxInfo;
+import it.davidlab.timeslot.service.AlgoService;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,31 +24,44 @@ import org.springframework.web.bind.annotation.*;
 
 import java.io.ByteArrayOutputStream;
 import java.security.Principal;
-import java.util.*;
+import java.util.List;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 @Api(value="User API")
 @RestController
-public class UserController {
+public class UserAPI {
 
     private AlgoService algoService;
 
-    private final Logger logger = LoggerFactory.getLogger(UserController.class);
+    private final Logger logger = LoggerFactory.getLogger(UserAPI.class);
 
-    public UserController(AlgoService algoService) {
+    public UserAPI(AlgoService algoService) {
         this.algoService = algoService;
     }
 
 
-    @GetMapping(path = "ticket/avaiable", produces="application/json")
+    @GetMapping(path = "/v1/timeslots", produces="application/json")
     @ResponseBody
-    public List<AssetInfo> ticketAvailable() throws Exception {
+    public List<AssetInfo> timeslotList(@RequestParam String filter, Principal principal) throws Exception {
 
-        com.algorand.algosdk.account.Account account = algoService.getAccount("admin");
+        Address accountAddress;
 
-//        //TODO check execute() before call body()
+        switch (filter) {
+            case "available":
+                accountAddress = algoService.getAdminAddress();
+                break;
+            case "owned":
+                accountAddress = algoService.getAccountAddress(principal.getName());
+                break;
+            default:
+                //TODO use custon exception
+                throw new Exception();
+        }
+
+        //TODO check execute() before call body()
         com.algorand.algosdk.v2.client.model.Account account2 =
-                algoService.getClient().AccountInformation(account.getAddress()).execute().body();
+                algoService.getClient().AccountInformation(accountAddress).execute().body();
 
         List<AssetHolding> assets = account2.assets;
 
@@ -58,30 +74,8 @@ public class UserController {
     }
 
 
-    @GetMapping(path = "/ticket/owned", produces="application/json")
-    @ResponseBody
-    public List<AssetInfo> ticketOwned(Principal principal) throws Exception {
 
-        com.algorand.algosdk.account.Account currentAccount = algoService.getAccount(principal.getName());
-
-        //TODO check execute() before call body()
-        com.algorand.algosdk.v2.client.model.Account account =
-                algoService.getClient().AccountInformation(currentAccount.getAddress()).execute().body();
-
-        List<AssetHolding> assets = account.assets;
-
-        List<AssetInfo> assetsInfo = assets.stream().filter(a -> !StringUtils.isEmpty(a.creator))
-                .map(a-> algoService.getAssetProperties(a.assetId, a.amount.longValue()))
-                .filter(a -> a.isPresent() && (a.get().getType() == AssetType.TICKET && a.get().getAmount() > 0))
-                .map(Optional::get).collect(Collectors.toList());
-
-        return assetsInfo;
-    }
-
-
-
-
-    @GetMapping(path = "/receipt/owned", produces="application/json")
+    @GetMapping(path = "/v1/receipts", produces="application/json")
     @ResponseBody
     public List<AssetInfo> receiptOwned(Principal principal) throws Exception {
 
@@ -103,30 +97,30 @@ public class UserController {
 
 
 
-    @GetMapping(path = "/transactions/{ticketId}", produces="application/json")
+    @GetMapping(path = "/v1/timeslots/{id}/transactions/", produces="application/json")
     @ResponseBody
-    public List<TxInfo> getTransactions(@PathVariable long ticketId, Principal principal) throws Exception {
+    public List<TxInfo> getTransactions(@PathVariable long id, Principal principal) throws Exception {
 
         com.algorand.algosdk.account.Account currentAccount = algoService.getAccount(principal.getName());
 
         List<com.algorand.algosdk.v2.client.model.Transaction> txs = algoService.getIndexerClient()
                 .lookupAccountTransactions(currentAccount.getAddress()).txType(Enums.TxType.AXFER)
-                .currencyGreaterThan(0L).assetId(ticketId).execute().body().transactions;
+                .currencyGreaterThan(0L).assetId(id).execute().body().transactions;
 
 
         List<TxInfo> txInfos = txs.stream()
-                .map(t -> algoService.getTxParams(t, ticketId)).filter(t -> t.getAmount()>0)
+                .map(t -> algoService.getTxParams(t, id)).filter(t -> t.getAmount()>0)
                 .collect(Collectors.toList());
 
         return txInfos;
     }
 
 
-    @GetMapping(path = "/ticket/{ticketid}/details", produces="application/json")
+    @GetMapping(path = "/v1/timeslots/{id}", produces="application/json")
     @ResponseBody
-    public AssetInfo ticketDetails(@PathVariable long ticketid, Principal principal) throws Exception {
+    public AssetInfo ticketDetails(@PathVariable long id, Principal principal) throws Exception {
 
-        AssetInfo assetInfo = algoService.getAssetProperties(ticketid).orElseThrow();
+        AssetInfo assetInfo = algoService.getAssetProperties(id).orElseThrow();
 
         return assetInfo;
     }
@@ -134,17 +128,17 @@ public class UserController {
 
     /**
      * User can buy one or more timeslots
-     * @param timeslotIndex
+     * @param id
      * @param amount
      * @return
      * @throws Exception
      */
-    @PostMapping(value = "/timeslot/{timeslotIndex}/obtain/amount/{amount}", produces="application/json")
+    @PostMapping(value = "/v1/timeslots/{id}/buy/{amount}", produces="application/json")
     @ResponseBody
-    public String getTicket(@PathVariable Long timeslotIndex, @PathVariable int amount,
+    public String getTicket(@PathVariable Long id, @PathVariable int amount,
                               Principal principal) throws Exception {
 
-        Optional<TimeslotProps> timeslotProps = algoService.getAssetParams(timeslotIndex);
+        Optional<TimeslotProps> timeslotProps = algoService.getAssetParams(id);
 
         //TODO write custom exception for that
         if (timeslotProps.isEmpty()) {
@@ -161,7 +155,7 @@ public class UserController {
 
         TransactionParametersResponse params = algoService.getClient().TransactionParams().execute().body();
 
-        algoService.checkOptIn(timeslotIndex, buyerAccount);
+        algoService.checkOptIn(id, buyerAccount);
 
         long totalPrice = (assetPrice * 1000000L) * (long) amount; //converted in microAlgorand
 
@@ -179,7 +173,7 @@ public class UserController {
                 .AssetTransferTransactionBuilder()
                 .sender(adminAccount.getAddress())
                 .assetReceiver(buyerAccount.getAddress())
-                .assetIndex(timeslotIndex)
+                .assetIndex(id)
                 .suggestedParams(params)
                 .note(encodedTxMsg)
                 .assetAmount(amount)
@@ -205,10 +199,10 @@ public class UserController {
                 algoService.getClient().RawTransaction().rawtxn(groupTransactionBytes).execute();
 
         if (txResponse.isSuccessful()) {
-            String id = txResponse.body().txId;
-            logger.info("Transaction id: ", id);
+            String txId = txResponse.body().txId;
+            logger.info("Transaction id: ", txId);
             // write transaction to node
-            algoService.waitForConfirmation(id, 6);
+            algoService.waitForConfirmation(txId, 6);
 
         } else {
             //TODO manage Error!!
@@ -222,19 +216,19 @@ public class UserController {
 
 
 
-    @PostMapping(value = "/rticket/{timeslotIndex}/validate/amount/{amount}", produces="application/json")
+    @PostMapping(value = "/v1/timeslots/{id}/receipt/{amount}", produces="application/json")
     @ResponseBody
-    public String validateTicket(@PathVariable long timeslotIndex, @PathVariable long amount,
+    public String validateTicket(@PathVariable long id, @PathVariable long amount,
                                   Principal principal) throws Exception{
 
         com.algorand.algosdk.account.Account comsumerAccount = algoService.getAccount(principal.getName());
         com.algorand.algosdk.account.Account adminAccount = algoService.getAdminAccount();
         com.algorand.algosdk.account.Account archiveAccount = algoService.getArchiveAccount();
 
-        algoService.checkOptIn(timeslotIndex, archiveAccount);
+        algoService.checkOptIn(id, archiveAccount);
 
         //TODO find a smarter way to retrieve timeslotIndex+1
-        long timeslotReceiptIndex = timeslotIndex + 1;
+        long timeslotReceiptIndex = id + 1;
         algoService.checkOptIn(timeslotReceiptIndex, comsumerAccount);
 
         //TODO check execute first
@@ -251,7 +245,7 @@ public class UserController {
                 .AssetTransferTransactionBuilder()
                 .sender(comsumerAccount.getAddress())
                 .assetReceiver(archiveAccount.getAddress())
-                .assetIndex(timeslotIndex)
+                .assetIndex(id)
                 .suggestedParams(params)
                 .note(encodedTxMsg)
                 .assetAmount(amount)
@@ -303,16 +297,16 @@ public class UserController {
     }
 
 
-    @PostMapping(value = "/ticket/{timeslotIndex}/consume/amount/{amount}", produces="application/json")
+    @PostMapping(value = "/v1/timeslots/{id}/{amount}", produces="application/json")
     @ResponseBody
-    public String consumeTicket(@PathVariable long timeslotIndex, @PathVariable long amount,
+    public String consumeTicket(@PathVariable long id, @PathVariable long amount,
                                  Principal principal) throws Exception{
 
         com.algorand.algosdk.account.Account comsumerAccount = algoService.getAccount(principal.getName());
         com.algorand.algosdk.account.Account archiveAccount = algoService.getArchiveAccount();
 
         // Check if the archive account has opted in
-        algoService.checkOptIn(timeslotIndex, archiveAccount);
+        algoService.checkOptIn(id, archiveAccount);
 
         //TODO check execute first
         TransactionParametersResponse params = algoService.getClient().TransactionParams().execute().body();
@@ -327,7 +321,7 @@ public class UserController {
                 .AssetTransferTransactionBuilder()
                 .sender(comsumerAccount.getAddress())
                 .assetReceiver(archiveAccount.getAddress())
-                .assetIndex(timeslotIndex)
+                .assetIndex(id)
                 .suggestedParams(params)
                 .note(encodedTxMsg)
                 .assetAmount(amount)

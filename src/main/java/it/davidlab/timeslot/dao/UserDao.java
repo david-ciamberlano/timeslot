@@ -1,21 +1,28 @@
-package it.davidlab.timeslot.entity;
+package it.davidlab.timeslot.dao;
 
 
 import javax.persistence.*;
 
 @Entity
 @Table(name = "USERS")
-public class UserEntity {
+public class UserDao {
 
     @Id @Column(length = 50, nullable = false) private String username;
     @Column(length = 50, nullable = false) private String password;
     @Column(nullable = false, columnDefinition = "TINYINT", length = 1) private boolean enabled;
 
-    @OneToOne(fetch = FetchType.LAZY)
+    @OneToOne(cascade = CascadeType.ALL)
     @JoinColumn(name = "username", referencedColumnName = "username")
-    private AccountEntity account;
+    private AccountDao account;
 
-    protected UserEntity(){}
+    protected UserDao(){}
+
+    public UserDao(String username, String password, boolean enabled, AccountDao account) {
+        this.username = username;
+        this.password = password;
+        this.enabled = enabled;
+        this.account = account;
+    }
 
     public String getUsername() {
         return username;
@@ -29,7 +36,7 @@ public class UserEntity {
         return enabled;
     }
 
-    public AccountEntity getAccount() {
+    public AccountDao getAccount() {
         return account;
     }
 

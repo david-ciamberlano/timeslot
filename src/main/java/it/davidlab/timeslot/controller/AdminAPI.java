@@ -1,4 +1,4 @@
-package it.davidlab.timeslot.service;
+package it.davidlab.timeslot.controller;
 
 import com.algorand.algosdk.account.Account;
 import com.algorand.algosdk.crypto.Address;
@@ -11,14 +11,16 @@ import com.algorand.algosdk.v2.client.common.Response;
 import com.algorand.algosdk.v2.client.model.AssetHolding;
 import com.algorand.algosdk.v2.client.model.PostTransactionsResponse;
 import com.algorand.algosdk.v2.client.model.TransactionParametersResponse;
-import it.davidlab.timeslot.domain.AssetModel;
-import it.davidlab.timeslot.domain.AssetType;
-import it.davidlab.timeslot.domain.TimeslotProps;
-import it.davidlab.timeslot.dto.AssetInfo;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import it.davidlab.timeslot.domain.*;
+import it.davidlab.timeslot.service.AlgoService;
+import it.davidlab.timeslot.service.UserService;
 import org.apache.commons.codec.digest.DigestUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 
 import java.io.ByteArrayOutputStream;
@@ -32,32 +34,54 @@ import java.util.concurrent.TimeUnit;
 
 @RestController
 @RequestMapping("/admin")
-public class AdminController {
+public class AdminAPI {
 
 
     private AlgoService algoService;
+    private UserService userService;
 
-    private static final Logger logger = LoggerFactory.getLogger(AdminController.class);
 
-    public AdminController(AlgoService algoService) {
+    private static final Logger logger = LoggerFactory.getLogger(AdminAPI.class);
+
+    public AdminAPI(AlgoService algoService, UserService userService) {
+        this.userService = userService;
         this.algoService = algoService;
     }
 
-
-    @GetMapping(path = "/ticket/available")
+    @Operation(summary = "Create a new User")
+    @PostMapping(path = "/v1/user", consumes = "application/json")
+    @ResponseStatus(HttpStatus.CREATED)
     @ResponseBody
-    public List<AssetInfo> timeslotList(Principal principal) throws Exception {
+    public void createUser(@RequestBody UserModel user) {
+        userService.createUser(user);
+    }
 
-        com.algorand.algosdk.account.Account adminAccount = algoService.getAccount(principal.getName());
+
+    @Operation(summary = "Get available/archived timeslot.")
+    @GetMapping(path = "/v1/timeslots")
+    @ResponseBody
+    public List<AssetInfo> timeslotList(Principal principal,
+                                        @Parameter(description = "available | archived")
+                                        @RequestParam String filter) throws Exception {
+
+        Account currentAccount;
+        if (filter.equals("available")) {
+            currentAccount = algoService.getAccount(principal.getName());
+        } else if (filter.equals("archived")) {
+            currentAccount = algoService.getArchiveAccount();
+        } else {
+            throw new Exception("Error");
+        }
 
         //TODO check execute() before call body()
         com.algorand.algosdk.v2.client.model.Account account =
-                algoService.getClient().AccountInformation(adminAccount.getAddress()).execute().body();
+                algoService.getClient().AccountInformation(currentAccount.getAddress()).execute().body();
 
         List<AssetHolding> assets = account.assets;
 
         List<AssetInfo> assetInfo = new ArrayList<>();
 
+        //TODO Filter the expired
         assets.stream().filter(a -> !StringUtils.isEmpty(a.creator)).forEach(a -> {
             Optional<AssetInfo> asset = algoService.getAssetProperties(a.assetId, a.amount.longValue());
             asset.ifPresent(as -> {
@@ -70,46 +94,49 @@ public class AdminController {
     }
 
 
-    @GetMapping(path = "/ticket/archived")
-    @ResponseBody
-    public List<AssetInfo> archivedTicket(Principal principal) throws Exception {
+    @PostMapping(value = "/v1/timeslots/{id}/send/{amount}/to/{username}")
+    public void sendTimeslot(Principal principal, @PathVariable long id,
+                             @PathVariable long amount, @PathVariable String username) throws Exception {
 
-        com.algorand.algosdk.account.Account adminAccount = algoService.getArchiveAccount();
+        Account adminAccount = algoService.getAccount(principal.getName());
+        Account receiverAccount = algoService.getAccount(username);
 
-        //TODO check execute() before call body()
-        com.algorand.algosdk.v2.client.model.Account account =
-                algoService.getClient().AccountInformation(adminAccount.getAddress()).execute().body();
+        TransactionParametersResponse params = algoService.getClient().TransactionParams().execute().body();
 
-        List<AssetHolding> assets = account.assets;
+        com.algorand.algosdk.transaction.Transaction purchaseTx =
+                com.algorand.algosdk.transaction.Transaction
+                .AssetTransferTransactionBuilder()
+                .sender(adminAccount.getAddress())
+                .assetReceiver(receiverAccount.getAddress())
+                .assetIndex(id)
+                .suggestedParams(params)
+//                .note("encodedTxMsg")
+                .assetAmount(amount)
+                .build();
 
-        List<AssetInfo> assetInfo = new ArrayList<>();
+        algoService.checkOptIn(id, receiverAccount);
 
-        assets.stream().filter(a -> !StringUtils.isEmpty(a.creator)).forEach(a -> {
-            Optional<AssetInfo> asset = algoService.getAssetProperties(a.assetId, a.amount.longValue());
-            asset.ifPresent(as -> {
-                as.setAmount(a.amount.longValue());
-                assetInfo.add(as);
-            });
-        });
+        algoService.sendTransaction(adminAccount, purchaseTx);
 
-        return assetInfo;
     }
+
 
 
     /**
-     * Create two new tokens for a new timeslot
+     * Create new ticket
      *
      * @param assetModel
      * @return
      * @throws Exception
      */
-    @PostMapping(value = "/timeslot/create", consumes = "application/json", produces = "application/json")
+    @PostMapping(value = "/v1/timeslots", consumes = "application/json")
+    @ResponseStatus(HttpStatus.CREATED)
     @ResponseBody
-    public String createTsPool(@RequestBody AssetModel assetModel, Principal principal) throws Exception {
+    public void createTimeslots(@RequestBody AssetModel assetModel, Principal principal) throws Exception {
 
-        com.algorand.algosdk.account.Account adminAccount = algoService.getAdminAccount();
+        Account adminAccount = algoService.getAccount(principal.getName());
 
-        boolean defaultFrozen = false;
+        boolean defaultFrozen = assetModel.isDefaultFrozen();
         String unitName = assetModel.getUnitName();
         String assetName = assetModel.getAssetName();
         long assetTotal = assetModel.getAssetTotal();
@@ -118,21 +145,28 @@ public class AdminController {
 
         //TODO is it necessary to set all the addresses?
         Address manager = adminAccount.getAddress();
-        Address reserve = adminAccount.getAddress();;
-        Address freeze = adminAccount.getAddress();;
-        Address clawback = adminAccount.getAddress();;
+        Address reserve = adminAccount.getAddress();
+        ;
+        Address freeze = adminAccount.getAddress();
+        ;
+        Address clawback = adminAccount.getAddress();
+        ;
 
         //TODO
         TransactionParametersResponse params = algoService.getClient().TransactionParams().execute().body();
 
-        long startTimestamp = assetModel.getAssetParams().getStartValidity();
-        long endTimestamp = assetModel.getAssetParams().getEndValidity();
-        String description = assetModel.getAssetParams().getDescription();
-        long price = assetModel.getAssetParams().getPrice();
+        TimeslotProps timeslotProps = assetModel.getTimeslotProperties();
+
+        long startTimestamp = timeslotProps.getStartValidity();
+        long endTimestamp = timeslotProps.getEndValidity();
+        String description = timeslotProps.getDescription();
+        long price = timeslotProps.getPrice();
+        long duration = timeslotProps.getDuration();
+        TsLocation tsLocation = timeslotProps.getTsLocation();
 
         // Ticket Asset
-        TimeslotProps tsParams = new TimeslotProps(startTimestamp, endTimestamp, -1, TimeUnit.HOURS,
-                description, price, AssetType.TICKET);
+        TimeslotProps tsParams = new TimeslotProps(startTimestamp, endTimestamp, duration, TimeUnit.HOURS,
+                price, tsLocation, AssetType.TICKET, description);
 
 
         byte[] encAssetProps = Encoder.encodeToMsgPack(tsParams);
@@ -174,23 +208,21 @@ public class AdminController {
             logger.info("Transaction id: ", txId);
             // write transaction to node
             algoService.waitForConfirmation(txId, 6);
-            assetIndex = algoService.getClient().PendingTransactionInformation(txId).execute().body().assetIndex;
+//            assetIndex = algoService.getClient().PendingTransactionInformation(txId).execute().body().assetIndex;
 
         } else {
             throw new IllegalStateException();
         }
 
-        return "{\"assetIndex\":" + assetIndex + ", \"txId\":\"" + txId + "\"}";
     }
 
 
-
-
-    @PostMapping(value = "/timeslot/receipt/create", consumes = "application/json", produces = "application/json")
+    @PostMapping(value = "/v1/ticketpair", consumes = "application/json")
+    @ResponseStatus(HttpStatus.CREATED)
     @ResponseBody
-    public String createTsRcp(@RequestBody AssetModel assetModel, Principal principal) throws Exception {
+    public void createTimeslotReceipts(@RequestBody AssetModel assetModel, Principal principal) throws Exception {
 
-        com.algorand.algosdk.account.Account adminAccount = algoService.getAccount(principal.getName());
+        Account adminAccount = algoService.getAdminAccount();
 
         boolean defaultFrozen = false;
         String unitName = assetModel.getUnitName();
@@ -200,24 +232,31 @@ public class AdminController {
         String url = assetModel.getUrl();
 
         Address manager = adminAccount.getAddress();
-        Address reserve = adminAccount.getAddress();;
-        Address freeze = adminAccount.getAddress();;
-        Address clawback = adminAccount.getAddress();;
+        Address reserve = adminAccount.getAddress();
+        ;
+        Address freeze = adminAccount.getAddress();
+        ;
+        Address clawback = adminAccount.getAddress();
+        ;
 
         TransactionParametersResponse params = algoService.getClient().TransactionParams().execute().body();
+        TimeslotProps timeslotProps = assetModel.getTimeslotProperties();
 
-        long startTimestamp = assetModel.getAssetParams().getStartValidity();
-        long endTimestamp = assetModel.getAssetParams().getEndValidity();
-        String description = assetModel.getAssetParams().getDescription();
-        long price = assetModel.getAssetParams().getPrice();
+        long startTimestamp = timeslotProps.getStartValidity();
+        long endTimestamp = timeslotProps.getEndValidity();
+        String description = timeslotProps.getDescription();
+        long price = timeslotProps.getPrice();
+        long duration = timeslotProps.getDuration();
+        TsLocation tsLocation = timeslotProps.getTsLocation();
 
         // Ticket Asset
-        TimeslotProps assetTParams = new TimeslotProps(startTimestamp, endTimestamp, -1, TimeUnit.HOURS,
-                description, price, AssetType.TICKET);
-        byte[] encAssetTProps = Encoder.encodeToMsgPack(assetTParams);
+        TimeslotProps timeslotParams = new TimeslotProps(startTimestamp, endTimestamp, duration, TimeUnit.HOURS,
+                price, tsLocation, AssetType.TICKET, description);
+
+        byte[] encAssetTProps = Encoder.encodeToMsgPack(timeslotParams);
         byte[] propsHashT = Encoder.encodeToBase64(DigestUtils.md5(encAssetTProps)).getBytes(StandardCharsets.UTF_8);
         String assetTName = "#" + assetName;
-        String unitTName = "<#>" + unitName;
+        String unitTName = "#" + unitName;
 
         Transaction txT = Transaction.AssetCreateTransactionBuilder()
                 .sender(adminAccount.getAddress())
@@ -237,12 +276,12 @@ public class AdminController {
                 .build();
 
         // Receipt
-        TimeslotProps assetRParams = new TimeslotProps(startTimestamp, endTimestamp, -1, TimeUnit.HOURS,
-                description, price, AssetType.RECEIPT);
-        byte[] encAssetRProps = Encoder.encodeToMsgPack(assetRParams);
-        byte[] propsHashR = Encoder.encodeToBase64(DigestUtils.md5(encAssetRProps)).getBytes(StandardCharsets.UTF_8);
+        TimeslotProps timeslotRecParams = new TimeslotProps(startTimestamp, endTimestamp, duration, TimeUnit.HOURS,
+                price, tsLocation, AssetType.RECEIPT, description);
+        byte[] encAssetRecProps = Encoder.encodeToMsgPack(timeslotRecParams);
+//???    byte[] propsHashR = Encoder.encodeToBase64(DigestUtils.md5(encAssetRecProps)).getBytes(StandardCharsets.UTF_8);
         String assetRName = assetName;
-        String unitRName = "<>" + unitName;
+        String unitRName = unitName;
 
         Transaction txR = Transaction.AssetCreateTransactionBuilder()
                 .sender(adminAccount.getAddress())
@@ -256,7 +295,7 @@ public class AdminController {
                 .freeze(freeze)
                 .defaultFrozen(defaultFrozen)
                 .clawback(clawback)
-                .note(encAssetRProps)
+                .note(encAssetRecProps)
 //???                .metadataHash(propsHashR)
                 .suggestedParams(params)
                 .build();
@@ -292,13 +331,12 @@ public class AdminController {
             logger.info("Transaction id: ", txId);
             // write transaction to node
             algoService.waitForConfirmation(txId, 6);
-            assetIndex = algoService.getClient().PendingTransactionInformation(txId).execute().body().assetIndex;
+//            assetIndex = algoService.getClient().PendingTransactionInformation(txId).execute().body().assetIndex;
 
         } else {
             throw new IllegalStateException();
         }
 
-        return "{\"assetIndex\":" + assetIndex + ", \"txId\":\"" + txId + "\"}";
     }
 
 

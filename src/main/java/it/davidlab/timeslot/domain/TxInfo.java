@@ -1,4 +1,4 @@
-package it.davidlab.timeslot.dto;
+package it.davidlab.timeslot.domain;
 
 public class TxInfo {
 

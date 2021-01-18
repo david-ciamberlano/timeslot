@@ -1,4 +1,4 @@
-package it.davidlab.timeslot.entity;
+package it.davidlab.timeslot.dao;
 
 import javax.persistence.Embeddable;
 import java.io.Serializable;

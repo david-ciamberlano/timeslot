@@ -8,6 +8,9 @@ public class TsLocation {
     private float longitude;
     private boolean hasCoordinates;
 
+    public TsLocation() {
+    }
+
     public TsLocation(String address) {
         this.address = address;
         this.latitude = 0;

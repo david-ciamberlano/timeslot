@@ -1,4 +1,4 @@
-package it.davidlab.timeslot.entity;
+package it.davidlab.timeslot.dao;
 
 
 import javax.persistence.Column;
@@ -8,7 +8,7 @@ import javax.persistence.Table;
 
 @Entity
 @Table(name = "ACCOUNT")
-public class AccountEntity {
+public class AccountDao {
 
 
     @Id @Column(length = 50, nullable = false)
@@ -16,7 +16,13 @@ public class AccountEntity {
     @Column(length = 80, nullable = false) private String address;
     @Column(length = 250, nullable = false) private String passphrase;
 
-    public AccountEntity() {
+    public AccountDao() {
+    }
+
+    public AccountDao(String username, String address, String passphrase) {
+        this.username = username;
+        this.address = address;
+        this.passphrase = passphrase;
     }
 
     public String getUsername() {

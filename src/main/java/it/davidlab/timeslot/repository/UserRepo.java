@@ -1,10 +1,10 @@
 package it.davidlab.timeslot.repository;
 
-import it.davidlab.timeslot.entity.UserEntity;
+import it.davidlab.timeslot.dao.UserDao;
 import org.springframework.data.repository.CrudRepository;
 
-public interface UserRepo extends CrudRepository<UserEntity, String> {
+public interface UserRepo extends CrudRepository<UserDao, String> {
 
-    UserEntity getByUsername(String username);
+    UserDao getByUsername(String username);
 
 }

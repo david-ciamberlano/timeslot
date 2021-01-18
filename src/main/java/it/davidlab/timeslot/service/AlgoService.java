@@ -1,5 +1,6 @@
 package it.davidlab.timeslot.service;
 
+import com.algorand.algosdk.crypto.Address;
 import com.algorand.algosdk.transaction.SignedTransaction;
 import com.algorand.algosdk.util.Encoder;
 import com.algorand.algosdk.v2.client.common.AlgodClient;
@@ -7,9 +8,9 @@ import com.algorand.algosdk.v2.client.common.IndexerClient;
 import com.algorand.algosdk.v2.client.common.Response;
 import com.algorand.algosdk.v2.client.model.*;
 import it.davidlab.timeslot.domain.TimeslotProps;
-import it.davidlab.timeslot.dto.AssetInfo;
-import it.davidlab.timeslot.dto.TxInfo;
-import it.davidlab.timeslot.entity.AccountEntity;
+import it.davidlab.timeslot.domain.AssetInfo;
+import it.davidlab.timeslot.domain.TxInfo;
+import it.davidlab.timeslot.dao.AccountDao;
 import it.davidlab.timeslot.repository.AccountRepo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -25,7 +26,7 @@ import java.util.Optional;
 import java.util.concurrent.TimeoutException;
 
 @Service()
-class AlgoService {
+public class AlgoService {
 
     @Value("${algorand.algod.address}")
     private String ALGOD_API_ADDR;
@@ -46,13 +47,12 @@ class AlgoService {
 
     private static final Logger logger = LoggerFactory.getLogger(AlgoService.class);
 
-
-    protected AlgoService(AccountRepo accountRepo) {
+    public AlgoService(AccountRepo accountRepo) {
         this.accountRepo = accountRepo;
     }
 
     @PostConstruct
-    protected void init() {
+    public void init() {
         client = new AlgodClient(ALGOD_API_ADDR, ALGOD_PORT, ALGOD_API_TOKEN);
         indexerClient = new IndexerClient(INDEXER_API_ADDR, INDEXER_API_PORT);
     }
@@ -64,7 +64,7 @@ class AlgoService {
      * @param counter
      * @throws Exception
      */
-    protected void waitForConfirmation(String txId, int counter) throws Exception {
+    public void waitForConfirmation(String txId, int counter) throws Exception {
         long currentRound = client.GetStatus().execute().body().lastRound;
         long maxRound = currentRound + counter;
 
@@ -90,11 +90,11 @@ class AlgoService {
         }
     }
 
-    protected Optional<AssetInfo> getAssetProperties(long assetId) {
+    public Optional<AssetInfo> getAssetProperties(long assetId) {
         return getAssetProperties(assetId, -1);
     }
 
-    protected Optional<AssetInfo> getAssetProperties(long assetId, long assetAmount) {
+    public Optional<AssetInfo> getAssetProperties(long assetId, long assetAmount) {
 
         Optional<AssetInfo> optAssetProps = Optional.empty();
 
@@ -115,7 +115,8 @@ class AlgoService {
                 TimeslotProps tsprops = optTsprops.get();
                 AssetInfo assetInfo = new AssetInfo(assetId, assetParams.unitName, assetParams.name, assetParams.url,
                         assetAmount, tsprops.getStartValidity(), tsprops.getEndValidity(), tsprops.getDuration(),
-                        tsprops.getTimeUnit(), tsprops.getDescription(), tsprops.getPrice(), tsprops.getType());
+                        tsprops.getTimeUnit(), tsprops.getDescription(), tsprops.getTsLocation(),
+                        tsprops.getPrice(), tsprops.getType());
 
                 optAssetProps = Optional.of(assetInfo);
             }
@@ -125,7 +126,7 @@ class AlgoService {
     }
 
 
-    protected Optional<TimeslotProps> getAssetParams(long asset) {
+    public Optional<TimeslotProps> getAssetParams(long asset) {
 
         Optional<TimeslotProps> timeslotProps = Optional.empty();
 
@@ -153,7 +154,7 @@ class AlgoService {
                 try {
                     timeslotProps = Optional.of(Encoder.decodeFromMsgPack(note, TimeslotProps.class));
                 } catch (IOException e) {
-                    logger.error("It's not possible to decoded note for tx:" + txs.get(0).id);
+                    logger.error("It's not possible to decode note for tx:" + txs.get(0).id);
                 }
             }
         }
@@ -161,26 +162,40 @@ class AlgoService {
     }
 
 
-    protected TxInfo getTxParams(Transaction t, long ticketId) {
+    public TxInfo getTxParams(Transaction t, long ticketId) {
 
         return new TxInfo(t.id, ticketId, t.assetTransferTransaction.amount.longValue(),
                 t.sender, t.assetTransferTransaction.receiver, t.roundTime, "");
     }
 
-    protected com.algorand.algosdk.account.Account getAccount(String accountName) throws GeneralSecurityException {
-        AccountEntity consumerAccount = accountRepo.getByUsername(accountName);
+    public com.algorand.algosdk.account.Account getAccount(String accountName) throws GeneralSecurityException {
+        AccountDao consumerAccount = accountRepo.getByUsername(accountName);
+
+        //TODO Check if the user exists
         return new com.algorand.algosdk.account.Account(consumerAccount.getPassphrase());
     }
 
 
-    protected com.algorand.algosdk.account.Account getAdminAccount() throws GeneralSecurityException {
-        AccountEntity consumerAccount = accountRepo.getByUsername("admin");
+    public com.algorand.algosdk.account.Account getAdminAccount() throws GeneralSecurityException {
+        AccountDao consumerAccount = accountRepo.getByUsername("admin");
         return new com.algorand.algosdk.account.Account(consumerAccount.getPassphrase());
     }
 
-    protected com.algorand.algosdk.account.Account getArchiveAccount() throws GeneralSecurityException {
-        AccountEntity consumerAccount = accountRepo.getByUsername("archive");
+    public com.algorand.algosdk.account.Account getArchiveAccount() throws GeneralSecurityException {
+        AccountDao consumerAccount = accountRepo.getByUsername("archive");
         return new com.algorand.algosdk.account.Account(consumerAccount.getPassphrase());
+    }
+
+    public Address getAccountAddress(String accountName) throws GeneralSecurityException {
+        return getAccount(accountName).getAddress();
+    }
+
+    public Address getAdminAddress() throws GeneralSecurityException {
+        return getAdminAccount().getAddress();
+    }
+
+    public Address getArchiveAddress() throws GeneralSecurityException {
+        return getArchiveAccount().getAddress();
     }
 
 
@@ -190,7 +205,7 @@ class AlgoService {
      * @param algoAccount
      * @throws Exception
      */
-    protected void checkOptIn(Long assetId, com.algorand.algosdk.account.Account algoAccount) throws Exception {
+    public void checkOptIn(Long assetId, com.algorand.algosdk.account.Account algoAccount) throws Exception {
         // check if receiver has opted in for the asset
         Response<com.algorand.algosdk.v2.client.model.Account> accountResponse =
                 getClient().AccountInformation(algoAccount.getAddress()).execute();
@@ -203,7 +218,7 @@ class AlgoService {
         }
     }
 
-    protected String optIn(long assetIndex, com.algorand.algosdk.account.Account optinAccount) throws Exception {
+    public String optIn(long assetIndex, com.algorand.algosdk.account.Account optinAccount) throws Exception {
 
         //TODO check execute() before calling body()
         TransactionParametersResponse params = getClient().TransactionParams().execute().body();
@@ -222,6 +237,28 @@ class AlgoService {
         waitForConfirmation(txId, 6);
 
         return txId;
+    }
+
+
+    public void sendTransaction(com.algorand.algosdk.account.Account algoAccount,
+                                com.algorand.algosdk.transaction.Transaction purchaseTx) throws Exception {
+        SignedTransaction signedTicket = algoAccount.signTransaction(purchaseTx);
+
+        byte[] encodedTicketTx = Encoder.encodeToMsgPack(signedTicket);
+
+        Response<PostTransactionsResponse> txResponse =
+                client.RawTransaction().rawtxn(encodedTicketTx).execute();
+
+        String txId;
+        if (txResponse.isSuccessful()) {
+            txId = txResponse.body().txId;
+            logger.info("Transaction id: ", txId);
+            // write transaction to node
+            waitForConfirmation(txId, 6);
+        }
+        else {
+            throw new Exception("Transaction Error");
+        }
     }
 
 

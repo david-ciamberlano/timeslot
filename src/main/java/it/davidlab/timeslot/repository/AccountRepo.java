@@ -1,9 +1,10 @@
 package it.davidlab.timeslot.repository;
 
-import it.davidlab.timeslot.entity.AccountEntity;
+import it.davidlab.timeslot.dao.AccountDao;
 import org.springframework.data.repository.CrudRepository;
+import org.springframework.stereotype.Service;
 
-public interface AccountRepo extends CrudRepository<AccountEntity, String> {
+public interface AccountRepo extends CrudRepository<AccountDao, String> {
 
-    AccountEntity getByUsername(String username);
+    AccountDao getByUsername(String username);
 }

@@ -18,7 +18,8 @@ public class TimeslotProps {
     public TimeslotProps() {
     }
 
-    public TimeslotProps(long startValidity, long endValidity, long duration, TimeUnit timeUnit, String description, long price, AssetType type) {
+    public TimeslotProps(long startValidity, long endValidity, long duration, TimeUnit timeUnit,
+                         long price, TsLocation tsLocation, AssetType type, String description) {
         this.startValidity = startValidity;
         this.endValidity = endValidity;
         this.duration = duration;
@@ -26,6 +27,7 @@ public class TimeslotProps {
         this.description = description;
         this.price = price;
         this.type = type;
+        this.tsLocation = tsLocation;
     }
 
     public long getStartValidity() {
@@ -54,5 +56,9 @@ public class TimeslotProps {
 
     public AssetType getType() {
         return type;
+    }
+
+    public TsLocation getTsLocation() {
+        return tsLocation;
     }
 }
