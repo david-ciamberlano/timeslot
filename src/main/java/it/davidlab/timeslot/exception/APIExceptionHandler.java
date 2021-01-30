@@ -16,4 +16,10 @@ public class APIExceptionHandler extends RuntimeException{
     }
 
 
+    @ExceptionHandler(APIExceptionHandler.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public ResponseEntity<String> BadRequestException(RuntimeException ex) {
+        return new ResponseEntity<>(ex.getMessage(), HttpStatus.NOT_FOUND);
+    }
+
 }

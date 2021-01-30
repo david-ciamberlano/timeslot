@@ -21,7 +21,8 @@ create unique index ix_auth_username on authorities (username,authority);
 create table account(
     username varchar_ignorecase(50) not null primary key,
     address    VARCHAR(80) NOT NULL,
-    passphrase VARCHAR(250) NOT NULLACCOUNT
+    passphrase VARCHAR(250) NOT NULLACCOUNT,
+    UNIQUE (address)
 );
 
 ```

@@ -1,28 +1,34 @@
 package it.davidlab.timeslot.domain;
 
+public class TimeslotLocation {
 
-public class TsLocation {
-
+    private String name;
     private String address;
     private float latitude;
     private float longitude;
     private boolean hasCoordinates;
 
-    public TsLocation() {
+    public TimeslotLocation() {
     }
 
-    public TsLocation(String address) {
+    public TimeslotLocation(String name, String address) {
+        this.name = name;
         this.address = address;
         this.latitude = 0;
         this.longitude = 0;
         this.hasCoordinates = false;
     }
 
-    public TsLocation(String address, float latitude, float longitude) {
+    public TimeslotLocation(String name, String address, float latitude, float longitude) {
+        this.name = name;
         this.address = address;
         this.latitude = latitude;
         this.longitude = longitude;
         this.hasCoordinates = true;
+    }
+
+    public String getName() {
+        return name;
     }
 
     public String getAddress() {
@@ -41,16 +47,6 @@ public class TsLocation {
         return hasCoordinates;
     }
 
-    @Override
-    public boolean equals(Object o) {
-        if (this == o) return true;
-        if (!(o instanceof TsLocation)) return false;
-        TsLocation tsLocation = (TsLocation) o;
-        return Float.compare(tsLocation.latitude, latitude) == 0 && Float.compare(tsLocation.longitude, longitude) == 0 && hasCoordinates == tsLocation.hasCoordinates && address.equals(tsLocation.address);
-    }
 
-    @Override
-    public int hashCode() {
-        return java.util.Objects.hash(address, latitude, longitude, hasCoordinates);
-    }
+
 }

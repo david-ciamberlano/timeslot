@@ -11,6 +11,7 @@ import com.algorand.algosdk.v2.client.common.Response;
 import com.algorand.algosdk.v2.client.model.AssetHolding;
 import com.algorand.algosdk.v2.client.model.PostTransactionsResponse;
 import com.algorand.algosdk.v2.client.model.TransactionParametersResponse;
+import io.swagger.annotations.Api;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import it.davidlab.timeslot.domain.*;
@@ -22,16 +23,17 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.io.ByteArrayOutputStream;
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.security.Principal;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
-import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
+@Api(value = "Administration API")
 @RestController
 @RequestMapping("/admin")
 public class AdminAPI {
@@ -39,7 +41,6 @@ public class AdminAPI {
 
     private AlgoService algoService;
     private UserService userService;
-
 
     private static final Logger logger = LoggerFactory.getLogger(AdminAPI.class);
 
@@ -57,117 +58,112 @@ public class AdminAPI {
     }
 
 
-    @Operation(summary = "Get available/archived timeslot.")
+    @Operation(summary = "Get available/archived timeslots")
     @GetMapping(path = "/v1/timeslots")
     @ResponseBody
-    public List<AssetInfo> timeslotList(Principal principal,
-                                        @Parameter(description = "available | archived")
-                                        @RequestParam String filter) throws Exception {
+    public List<TimeslotDto> timeslotList(Principal principal, @Parameter(description = "available | archived")
+                                          @RequestParam String f) throws Exception {
 
         Account currentAccount;
-        if (filter.equals("available")) {
-            currentAccount = algoService.getAccount(principal.getName());
-        } else if (filter.equals("archived")) {
-            currentAccount = algoService.getArchiveAccount();
-        } else {
-            throw new Exception("Error");
+        switch (f) {
+            case "available":
+                currentAccount = algoService.getAccount(principal.getName());
+                break;
+            case "archived":
+                currentAccount = algoService.getArchiveAccount();
+                break;
+            default:
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Wrong Filter");
         }
 
-        //TODO check execute() before call body()
-        com.algorand.algosdk.v2.client.model.Account account =
-                algoService.getClient().AccountInformation(currentAccount.getAddress()).execute().body();
+        List<AssetHolding> assets = algoService.getAccountAssets(currentAccount.getAddress());
 
-        List<AssetHolding> assets = account.assets;
+        List<TimeslotDto> timeslotDtos =
 
-        List<AssetInfo> assetInfo = new ArrayList<>();
+        //TODO Filter the expired Timeslots
+        assets.stream().filter(a -> !StringUtils.isBlank(a.creator))
+                .map(a ->  algoService.getAssetProperties(a.assetId, a.amount.longValue()))
+                .filter(Optional::isPresent).map(Optional::get)
+                .collect (Collectors.toList());
 
-        //TODO Filter the expired
-        assets.stream().filter(a -> !StringUtils.isEmpty(a.creator)).forEach(a -> {
-            Optional<AssetInfo> asset = algoService.getAssetProperties(a.assetId, a.amount.longValue());
-            asset.ifPresent(as -> {
-                as.setAmount(a.amount.longValue());
-                assetInfo.add(as);
-            });
-        });
-
-        return assetInfo;
+        return timeslotDtos;
     }
 
 
+    @Operation(summary = "send timeslots to a username")
     @PostMapping(value = "/v1/timeslots/{id}/send/{amount}/to/{username}")
     public void sendTimeslot(Principal principal, @PathVariable long id,
-                             @PathVariable long amount, @PathVariable String username) throws Exception {
+                             @RequestBody TimeslotTransferDto timeslotTransfer) throws Exception {
+
+        String username = timeslotTransfer.getUsername();
+        long amount = timeslotTransfer.getAmount();
+        String note = timeslotTransfer.getTransferNote();
 
         Account adminAccount = algoService.getAccount(principal.getName());
         Account receiverAccount = algoService.getAccount(username);
 
-        TransactionParametersResponse params = algoService.getClient().TransactionParams().execute().body();
+        TransactionParametersResponse params = algoService.getTxParams();
 
         com.algorand.algosdk.transaction.Transaction purchaseTx =
-                com.algorand.algosdk.transaction.Transaction
-                .AssetTransferTransactionBuilder()
-                .sender(adminAccount.getAddress())
-                .assetReceiver(receiverAccount.getAddress())
-                .assetIndex(id)
-                .suggestedParams(params)
-//                .note("encodedTxMsg")
-                .assetAmount(amount)
-                .build();
+                Transaction
+                        .AssetTransferTransactionBuilder()
+                        .sender(adminAccount.getAddress())
+                        .assetReceiver(receiverAccount.getAddress())
+                        .assetIndex(id)
+                        .suggestedParams(params)
+                        .note(note.getBytes(StandardCharsets.UTF_8))
+                        .assetAmount(amount)
+                        .build();
 
         algoService.checkOptIn(id, receiverAccount);
-
         algoService.sendTransaction(adminAccount, purchaseTx);
 
     }
 
 
-
     /**
-     * Create new ticket
+     * Create new timeslots
      *
-     * @param assetModel
+     * @param timeslotModel
      * @return
      * @throws Exception
      */
+    @Operation(summary = "Create timeslots")
     @PostMapping(value = "/v1/timeslots", consumes = "application/json")
     @ResponseStatus(HttpStatus.CREATED)
     @ResponseBody
-    public void createTimeslots(@RequestBody AssetModel assetModel, Principal principal) throws Exception {
+    public void createTimeslots(@RequestBody TimeslotModel timeslotModel, Principal principal) throws Exception {
 
         Account adminAccount = algoService.getAccount(principal.getName());
 
-        boolean defaultFrozen = assetModel.isDefaultFrozen();
-        String unitName = assetModel.getUnitName();
-        String assetName = assetModel.getAssetName();
-        long assetTotal = assetModel.getAssetTotal();
-        int assettDecimals = assetModel.getAssetDecimals();
-        String url = assetModel.getUrl();
+        boolean defaultFrozen = timeslotModel.isDefaultFrozen();
+        String unitName = timeslotModel.getUnitName();
+        String assetName = timeslotModel.getAssetName();
+        long assetTotal = timeslotModel.getAssetTotal();
+        int assettDecimals = timeslotModel.getAssetDecimals();
+        String url = timeslotModel.getUrl();
 
         //TODO is it necessary to set all the addresses?
         Address manager = adminAccount.getAddress();
         Address reserve = adminAccount.getAddress();
-        ;
         Address freeze = adminAccount.getAddress();
-        ;
         Address clawback = adminAccount.getAddress();
-        ;
 
-        //TODO
-        TransactionParametersResponse params = algoService.getClient().TransactionParams().execute().body();
+        TransactionParametersResponse params = algoService.getTxParams();
 
-        TimeslotProps timeslotProps = assetModel.getTimeslotProperties();
+        TimeslotProperties timeslotProperties = timeslotModel.getTimeslotProperties();
 
-        long startTimestamp = timeslotProps.getStartValidity();
-        long endTimestamp = timeslotProps.getEndValidity();
-        String description = timeslotProps.getDescription();
-        long price = timeslotProps.getPrice();
-        long duration = timeslotProps.getDuration();
-        TsLocation tsLocation = timeslotProps.getTsLocation();
+        long startTimestamp = timeslotProperties.getStartValidity();
+        long endTimestamp = timeslotProperties.getEndValidity();
+        String description = timeslotProperties.getDescription();
+        long price = timeslotProperties.getPrice();
+        long duration = timeslotProperties.getDuration();
+        TimeslotLocation timeslotLocation = timeslotProperties.getTimeslotLocation();
+        TimeslotUnit timeslotUnit = timeslotProperties.getTimeslotUnit();
 
         // Ticket Asset
-        TimeslotProps tsParams = new TimeslotProps(startTimestamp, endTimestamp, duration, TimeUnit.HOURS,
-                price, tsLocation, AssetType.TICKET, description);
-
+        TimeslotProperties tsParams = new TimeslotProperties(startTimestamp, endTimestamp, duration, timeslotUnit,
+                price, timeslotLocation, TimeslotType.TICKET, description);
 
         byte[] encAssetProps = Encoder.encodeToMsgPack(tsParams);
         String assetRName = assetName;
@@ -206,57 +202,53 @@ public class AdminAPI {
         if (txResponse.isSuccessful()) {
             txId = txResponse.body().txId;
             logger.info("Transaction id: ", txId);
-            // write transaction to node
             algoService.waitForConfirmation(txId, 6);
-//            assetIndex = algoService.getClient().PendingTransactionInformation(txId).execute().body().assetIndex;
 
         } else {
-            throw new IllegalStateException();
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Transaction not accepted");
         }
 
     }
 
-
-    @PostMapping(value = "/v1/ticketpair", consumes = "application/json")
+    @Operation(summary = "Create new timeslotpairs")
+    @PostMapping(value = "/v1/timeslotpairs", consumes = "application/json")
     @ResponseStatus(HttpStatus.CREATED)
     @ResponseBody
-    public void createTimeslotReceipts(@RequestBody AssetModel assetModel, Principal principal) throws Exception {
+    public void createTimeslotPairs(@RequestBody TimeslotModel timeslotModel) throws Exception {
 
         Account adminAccount = algoService.getAdminAccount();
 
         boolean defaultFrozen = false;
-        String unitName = assetModel.getUnitName();
-        String assetName = assetModel.getAssetName();
-        long assetTotal = assetModel.getAssetTotal();
-        int assettDecimals = assetModel.getAssetDecimals();
-        String url = assetModel.getUrl();
+        String unitName = timeslotModel.getUnitName();
+        String assetName = timeslotModel.getAssetName();
+        long assetTotal = timeslotModel.getAssetTotal();
+        int assettDecimals = timeslotModel.getAssetDecimals();
+        String url = timeslotModel.getUrl();
 
         Address manager = adminAccount.getAddress();
         Address reserve = adminAccount.getAddress();
-        ;
         Address freeze = adminAccount.getAddress();
-        ;
         Address clawback = adminAccount.getAddress();
-        ;
 
-        TransactionParametersResponse params = algoService.getClient().TransactionParams().execute().body();
-        TimeslotProps timeslotProps = assetModel.getTimeslotProperties();
+        TransactionParametersResponse params = algoService.getTxParams();
+        TimeslotProperties timeslotProperties = timeslotModel.getTimeslotProperties();
 
-        long startTimestamp = timeslotProps.getStartValidity();
-        long endTimestamp = timeslotProps.getEndValidity();
-        String description = timeslotProps.getDescription();
-        long price = timeslotProps.getPrice();
-        long duration = timeslotProps.getDuration();
-        TsLocation tsLocation = timeslotProps.getTsLocation();
+        long startTimestamp = timeslotProperties.getStartValidity();
+        long endTimestamp = timeslotProperties.getEndValidity();
+        String description = timeslotProperties.getDescription();
+        long price = timeslotProperties.getPrice();
+        long duration = timeslotProperties.getDuration();
+        TimeslotLocation timeslotLocation = timeslotProperties.getTimeslotLocation();
+        TimeslotUnit timeslotUnit = timeslotProperties.getTimeslotUnit();
 
         // Ticket Asset
-        TimeslotProps timeslotParams = new TimeslotProps(startTimestamp, endTimestamp, duration, TimeUnit.HOURS,
-                price, tsLocation, AssetType.TICKET, description);
+        TimeslotProperties timeslotParams = new TimeslotProperties(startTimestamp, endTimestamp, duration,
+                timeslotUnit, price, timeslotLocation, TimeslotType.PAIR, description);
 
         byte[] encAssetTProps = Encoder.encodeToMsgPack(timeslotParams);
         byte[] propsHashT = Encoder.encodeToBase64(DigestUtils.md5(encAssetTProps)).getBytes(StandardCharsets.UTF_8);
-        String assetTName = "#" + assetName;
-        String unitTName = "#" + unitName;
+        String assetTName = "_" + assetName;
+        String unitTName = "_" + unitName;
 
         Transaction txT = Transaction.AssetCreateTransactionBuilder()
                 .sender(adminAccount.getAddress())
@@ -276,8 +268,8 @@ public class AdminAPI {
                 .build();
 
         // Receipt
-        TimeslotProps timeslotRecParams = new TimeslotProps(startTimestamp, endTimestamp, duration, TimeUnit.HOURS,
-                price, tsLocation, AssetType.RECEIPT, description);
+        TimeslotProperties timeslotRecParams = new TimeslotProperties(startTimestamp, endTimestamp, duration,
+                TimeslotUnit.HOURS, price, timeslotLocation, TimeslotType.RECEIPT, description);
         byte[] encAssetRecProps = Encoder.encodeToMsgPack(timeslotRecParams);
 //???    byte[] propsHashR = Encoder.encodeToBase64(DigestUtils.md5(encAssetRecProps)).getBytes(StandardCharsets.UTF_8);
         String assetRName = assetName;
@@ -331,10 +323,8 @@ public class AdminAPI {
             logger.info("Transaction id: ", txId);
             // write transaction to node
             algoService.waitForConfirmation(txId, 6);
-//            assetIndex = algoService.getClient().PendingTransactionInformation(txId).execute().body().assetIndex;
-
         } else {
-            throw new IllegalStateException();
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Transaction not accepted");
         }
 
     }

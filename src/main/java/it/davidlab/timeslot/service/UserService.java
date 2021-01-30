@@ -27,6 +27,7 @@ public class UserService {
     @Transactional
     public void createUser(UserModel userModel) {
         BCryptPasswordEncoder encoder = new BCryptPasswordEncoder();
+
         String encodedPassword = encoder.encode(userModel.getPassword());
 
         AccountDao account = new AccountDao(userModel.getUsername(),
@@ -38,7 +39,6 @@ public class UserService {
 
         String authority = userModel.isAdministrator() ? "ROLE_ADMIN" : "ROLE_USER";
         authorityRepo.save(new AuthorityDao(userModel.getUsername(), authority));
-
 
     }
 }

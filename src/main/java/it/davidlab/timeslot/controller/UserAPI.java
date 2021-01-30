@@ -1,9 +1,11 @@
 package it.davidlab.timeslot.controller;
 
 
+import ch.qos.logback.classic.spi.IThrowableProxy;
 import com.algorand.algosdk.crypto.Address;
 import com.algorand.algosdk.crypto.Digest;
 import com.algorand.algosdk.transaction.SignedTransaction;
+import com.algorand.algosdk.transaction.Transaction;
 import com.algorand.algosdk.transaction.TxGroup;
 import com.algorand.algosdk.util.Encoder;
 import com.algorand.algosdk.v2.client.common.Response;
@@ -12,24 +14,26 @@ import com.algorand.algosdk.v2.client.model.Enums;
 import com.algorand.algosdk.v2.client.model.PostTransactionsResponse;
 import com.algorand.algosdk.v2.client.model.TransactionParametersResponse;
 import io.swagger.annotations.Api;
-import it.davidlab.timeslot.domain.AssetType;
-import it.davidlab.timeslot.domain.TimeslotProps;
-import it.davidlab.timeslot.domain.AssetInfo;
-import it.davidlab.timeslot.domain.TxInfo;
+import io.swagger.v3.oas.annotations.Operation;
+import it.davidlab.timeslot.domain.*;
 import it.davidlab.timeslot.service.AlgoService;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.io.ByteArrayOutputStream;
+import java.nio.charset.StandardCharsets;
 import java.security.Principal;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
-@Api(value="User API")
+@Api(value = "User API")
 @RestController
+@RequestMapping("/user")
 public class UserAPI {
 
     private AlgoService algoService;
@@ -41,134 +45,170 @@ public class UserAPI {
     }
 
 
-    @GetMapping(path = "/v1/timeslots", produces="application/json")
+    /**
+     * get the available/owned timeslots
+     *
+     * @param principal
+     * @return
+     * @throws Exception
+     */
+    @Operation(summary = "get timeslot list {available | owned}")
+    @GetMapping(path = "/v1/timeslots", produces = "application/json")
     @ResponseBody
-    public List<AssetInfo> timeslotList(@RequestParam String filter, Principal principal) throws Exception {
+    public List<TimeslotDto> timeslotList(@RequestParam String f,
+                                          @RequestParam(required = false) Optional<String> namePrefix,
+                                          Principal principal) throws Exception {
 
         Address accountAddress;
 
-        switch (filter) {
+        // at least one between 'available' and 'owned' is required
+        switch (f) {
             case "available":
                 accountAddress = algoService.getAdminAddress();
                 break;
+
             case "owned":
                 accountAddress = algoService.getAccountAddress(principal.getName());
                 break;
+
             default:
-                //TODO use custon exception
-                throw new Exception();
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Wrong Filter" );
         }
 
-        //TODO check execute() before call body()
-        com.algorand.algosdk.v2.client.model.Account account2 =
-                algoService.getClient().AccountInformation(accountAddress).execute().body();
+        List<AssetHolding> assets = algoService.getAccountAssets(accountAddress);
 
-        List<AssetHolding> assets = account2.assets;
-
-        List<AssetInfo> assetInfo = assets.stream().filter(a -> !StringUtils.isEmpty(a.creator))
-                .map(a-> algoService.getAssetProperties(a.assetId, a.amount.longValue()))
-                .filter(a -> a.isPresent() && a.get().getType() == AssetType.TICKET && a.get().getAmount()>0)
+        List<TimeslotDto> timeslotDto = assets.stream().filter(a -> !StringUtils.isEmpty(a.creator))
+                .map(a -> algoService.getAssetProperties(a.assetId, a.amount.longValue()))
+                .filter(a -> a.isPresent() && a.get().getType() == TimeslotType.TICKET && a.get().getAmount() > 0)
+                .filter(a -> a.get().getUnitName().startsWith(namePrefix.orElse("")))
                 .map(Optional::get).collect(Collectors.toList());
 
-        return assetInfo;
+        return timeslotDto;
     }
 
 
-
-    @GetMapping(path = "/v1/receipts", produces="application/json")
+    /**
+     * get the owned timeslotpairs
+     *
+     * @param principal
+     * @return
+     * @throws Exception
+     */
+    @Operation(summary = "Get timeslotpairs owned")
+    @GetMapping(path = "/v1/timeslotpairs", produces = "application/json")
     @ResponseBody
-    public List<AssetInfo> receiptOwned(Principal principal) throws Exception {
+    public List<TimeslotDto> timeslotpairsList(@RequestParam String f,
+                                               @RequestParam(required = false) Optional<String> namePrefix,
+                                               Principal principal) throws Exception {
 
-        com.algorand.algosdk.account.Account currentAccount = algoService.getAccount(principal.getName());
+        Address accountAddress;
 
-        //TODO check execute() before call body()
-        com.algorand.algosdk.v2.client.model.Account account =
-                algoService.getClient().AccountInformation(currentAccount.getAddress()).execute().body();
+       switch (f) {
+           case "available":
+            accountAddress = algoService.getAdminAddress();
+           break;
+           case "owned":
+            accountAddress = algoService.getAccountAddress(principal.getName());
+            break;
+           default:
+               throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Wrong filter" );
+        }
 
-        List<AssetHolding> assets = account.assets;
+        List<AssetHolding> assets = algoService.getAccountAssets(accountAddress);
 
-        List<AssetInfo> assetsInfo = assets.stream().filter(a -> !StringUtils.isEmpty(a.creator))
-                .map(a-> algoService.getAssetProperties(a.assetId, a.amount.longValue()))
-                .filter(a -> a.isPresent() && (a.get().getType() == AssetType.RECEIPT && a.get().getAmount() > 0))
+        List<TimeslotDto> timeslotDto = assets.stream().filter(a -> !StringUtils.isEmpty(a.creator))
+                .map(a -> algoService.getAssetProperties(a.assetId, a.amount.longValue()))
+                .filter(p -> p.isPresent()
+                        && (p.get().getType() == TimeslotType.PAIR || p.get().getType() == TimeslotType.RECEIPT)
+                        && p.get().getAmount() > 0)
+                .filter(p -> p.get().getUnitName().startsWith(namePrefix.orElse("")))
                 .map(Optional::get).collect(Collectors.toList());
 
-        return assetsInfo;
+        return timeslotDto;
+
     }
 
 
-
-    @GetMapping(path = "/v1/timeslots/{id}/transactions/", produces="application/json")
+    @Operation(summary = "Get transactions of the current user")
+    @GetMapping(path = "/v1/timeslots/{id}/transactions", produces = "application/json")
     @ResponseBody
-    public List<TxInfo> getTransactions(@PathVariable long id, Principal principal) throws Exception {
+    public List<TransactionDto> getTransactions(@PathVariable long id,
+                                                @RequestParam(required = false) String sender,
+                                                @RequestParam(required = false) String receiver,
+                                                @RequestParam(required = false) String noteprefix,
+                                                Principal principal) throws Exception {
 
         com.algorand.algosdk.account.Account currentAccount = algoService.getAccount(principal.getName());
 
         List<com.algorand.algosdk.v2.client.model.Transaction> txs = algoService.getIndexerClient()
                 .lookupAccountTransactions(currentAccount.getAddress()).txType(Enums.TxType.AXFER)
-                .currencyGreaterThan(0L).assetId(id).execute().body().transactions;
+                .assetId(id).execute().body().transactions;
 
 
-        List<TxInfo> txInfos = txs.stream()
-                .map(t -> algoService.getTxParams(t, id)).filter(t -> t.getAmount()>0)
+        List<TransactionDto> transactionDtos = txs.stream()
+                .map(t -> algoService.getTxParams(t, id))
+                .filter(t -> t.getAmount() > 0)
+                .filter(t -> noteprefix != null ? t.getNote().startsWith(noteprefix) : true)
+                .filter(t -> receiver != null ? t.getReceiverUser().equals(receiver) : true)
+                .filter(t -> sender != null ? t.getSenderUser().equals(sender) : true)
                 .collect(Collectors.toList());
 
-        return txInfos;
+        return transactionDtos;
     }
 
 
-    @GetMapping(path = "/v1/timeslots/{id}", produces="application/json")
+    @Operation(summary = "get timeslot details")
+    @GetMapping(path = "/v1/timeslots/{id}", produces = "application/json")
     @ResponseBody
-    public AssetInfo ticketDetails(@PathVariable long id, Principal principal) throws Exception {
+    public TimeslotDto timeslotDetails(@PathVariable long id) {
 
-        AssetInfo assetInfo = algoService.getAssetProperties(id).orElseThrow();
+        TimeslotDto timeslotDto = algoService.getAssetProperties(id).orElseThrow();
 
-        return assetInfo;
+        return timeslotDto;
     }
 
 
     /**
      * User can buy one or more timeslots
+     *
      * @param id
      * @param amount
      * @return
      * @throws Exception
      */
-    @PostMapping(value = "/v1/timeslots/{id}/buy/{amount}", produces="application/json")
+    @Operation(summary = "take timeslots")
+    @PostMapping(value = "/v1/timeslots/{id}/take/{amount}", produces = "application/json")
+    @ResponseStatus(HttpStatus.ACCEPTED)
     @ResponseBody
-    public String getTicket(@PathVariable Long id, @PathVariable int amount,
+    public void takeTimeslots(@PathVariable Long id, @PathVariable int amount,
+                              @RequestParam(required = false) String note,
                               Principal principal) throws Exception {
 
-        Optional<TimeslotProps> timeslotProps = algoService.getAssetParams(id);
+        Optional<TimeslotProperties> timeslotProps = algoService.getAssetParams(id);
 
-        //TODO write custom exception for that
-        if (timeslotProps.isEmpty()) {
-            throw new IllegalStateException("No properties found for the timeslot");
+        long price;
+        if (timeslotProps.isPresent()) {
+            price = timeslotProps.get().getPrice();
+        } else {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Timeslot Properties Not Found");
         }
 
-        long assetPrice = timeslotProps.get().getPrice();
-
-        // get the current user (that is the buyer user)
         com.algorand.algosdk.account.Account buyerAccount = algoService.getAccount(principal.getName());
-
-        //TODO make "admin" parametric
-        com.algorand.algosdk.account.Account adminAccount = algoService.getAccount("admin");
-
-        TransactionParametersResponse params = algoService.getClient().TransactionParams().execute().body();
+        com.algorand.algosdk.account.Account adminAccount = algoService.getAdminAccount();
 
         algoService.checkOptIn(id, buyerAccount);
+        long totalBookingPrice = (price * 1000000L) * (long) amount; //converted in microAlgorand
 
-        long totalPrice = (assetPrice * 1000000L) * (long) amount; //converted in microAlgorand
+        TransactionParametersResponse params = algoService.getTxParams();
 
         com.algorand.algosdk.transaction.Transaction purchaseTx = com.algorand.algosdk.transaction.Transaction.PaymentTransactionBuilder()
                 .sender(buyerAccount.getAddress())
-                .amount(totalPrice)
+                .amount(totalBookingPrice)
                 .receiver(adminAccount.getAddress())
                 .suggestedParams(params)
                 .build();
 
-
-        //TODO what message?
-        byte[] encodedTxMsg = Encoder.encodeToMsgPack("");
+        byte[] encodedTxMsg = Encoder.encodeToMsgPack(note);
         com.algorand.algosdk.transaction.Transaction assetTTx = com.algorand.algosdk.transaction.Transaction
                 .AssetTransferTransactionBuilder()
                 .sender(adminAccount.getAddress())
@@ -178,7 +218,6 @@ public class UserAPI {
                 .note(encodedTxMsg)
                 .assetAmount(amount)
                 .build();
-
 
         // Group the transactions
         Digest gid = TxGroup.computeGroupID(purchaseTx, assetTTx);
@@ -205,25 +244,78 @@ public class UserAPI {
             algoService.waitForConfirmation(txId, 6);
 
         } else {
-            //TODO manage Error!!
-            return "{\"msg\":\"Error\"}";
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Can't create the asset");
         }
 
-        //TODO return a real json object!
-        return "{\"msg\":\"OK\"}";
     }
 
 
-
-
-    @PostMapping(value = "/v1/timeslots/{id}/receipt/{amount}", produces="application/json")
+    @Operation(summary = "spend timeslots")
+    @PostMapping(value = "/v1/timeslots/{id}/spend/{amount}", produces = "application/json")
+    @ResponseStatus(HttpStatus.ACCEPTED)
     @ResponseBody
-    public String validateTicket(@PathVariable long id, @PathVariable long amount,
-                                  Principal principal) throws Exception{
+    public void spendTimeslot(@PathVariable long id, @PathVariable long amount, @RequestParam String note,
+                              Principal principal) throws Exception {
+
+        com.algorand.algosdk.account.Account comsumerAccount = algoService.getAccount(principal.getName());
+        com.algorand.algosdk.account.Account archiveAccount = algoService.getArchiveAccount();
+
+        // Check if the archive account has opted in
+        algoService.checkOptIn(id, archiveAccount);
+
+        TransactionParametersResponse params = algoService.getTxParams();
+
+        // consumer consume timeslots
+        com.algorand.algosdk.transaction.Transaction ticketTx = Transaction
+                .AssetTransferTransactionBuilder()
+                .sender(comsumerAccount.getAddress())
+                .assetReceiver(archiveAccount.getAddress())
+                .assetIndex(id)
+                .suggestedParams(params)
+                .note(note.getBytes(StandardCharsets.UTF_8))
+                .assetAmount(amount)
+                .build();
+
+        SignedTransaction signedTicket = comsumerAccount.signTransaction(ticketTx);
+
+        byte[] encodedTicketTx = Encoder.encodeToMsgPack(signedTicket);
+
+        Response<PostTransactionsResponse> txResponse =
+                algoService.getClient().RawTransaction().rawtxn(encodedTicketTx).execute();
+
+        String txId;
+        if (txResponse.isSuccessful()) {
+            txId = txResponse.body().txId;
+            logger.info("Transaction id: ", txId);
+            // write transaction to node
+            algoService.waitForConfirmation(txId, 6);
+
+        } else {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Transaction Error: " + txResponse.message());
+        }
+
+    }
+
+
+    @Operation(summary = "spend timeslotpairs")
+    @PostMapping(value = "/v1/timeslotpairs/{id}/spend/{amount}", produces = "application/json")
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    @ResponseBody
+    public void spendTimeslotpairs(@PathVariable long id, @PathVariable long amount,
+                                   @RequestParam(required = false) Optional<String> note,
+                                   Principal principal) throws Exception {
 
         com.algorand.algosdk.account.Account comsumerAccount = algoService.getAccount(principal.getName());
         com.algorand.algosdk.account.Account adminAccount = algoService.getAdminAccount();
         com.algorand.algosdk.account.Account archiveAccount = algoService.getArchiveAccount();
+
+        // check if the asset type is a Pair!
+        // this could be done via Smartcontract... in a (near) future
+        Optional<TimeslotProperties> timeslotProps = algoService.getAssetParams(id);
+
+        if(!(timeslotProps.isPresent() && timeslotProps.get().getTimeslotType()==TimeslotType.PAIR)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Asset is not a pair" );
+        }
 
         algoService.checkOptIn(id, archiveAccount);
 
@@ -231,34 +323,29 @@ public class UserAPI {
         long timeslotReceiptIndex = id + 1;
         algoService.checkOptIn(timeslotReceiptIndex, comsumerAccount);
 
-        //TODO check execute first
-        TransactionParametersResponse params = algoService.getClient().TransactionParams().execute().body();
+        TransactionParametersResponse params = algoService.getTxParams();
 
-
-//        TxNoteMessage txNoteMessage = new TxNoteMessage(
-//                "You miss 100% of the shots you don’t take",
-//                "Wayne Gretzky");
-        byte[] encodedTxMsg = Encoder.encodeToMsgPack("");
+        String txnote = note.orElse("");
 
         // consumer consume timeslots
-        com.algorand.algosdk.transaction.Transaction ticketValidateTx = com.algorand.algosdk.transaction.Transaction
+        com.algorand.algosdk.transaction.Transaction ticketValidateTx = Transaction
                 .AssetTransferTransactionBuilder()
                 .sender(comsumerAccount.getAddress())
                 .assetReceiver(archiveAccount.getAddress())
                 .assetIndex(id)
                 .suggestedParams(params)
-                .note(encodedTxMsg)
+                .note(txnote.getBytes(StandardCharsets.UTF_8))
                 .assetAmount(amount)
                 .build();
 
         // admin send back receipts
-        com.algorand.algosdk.transaction.Transaction receiptValidateTx = com.algorand.algosdk.transaction.Transaction
+        com.algorand.algosdk.transaction.Transaction receiptValidateTx = Transaction
                 .AssetTransferTransactionBuilder()
                 .sender(adminAccount.getAddress())
                 .assetReceiver(comsumerAccount.getAddress())
                 .assetIndex(timeslotReceiptIndex)
                 .suggestedParams(params)
-                .note(encodedTxMsg)
+                .note(txnote.getBytes(StandardCharsets.UTF_8))
                 .assetAmount(amount)
                 .build();
 
@@ -288,69 +375,10 @@ public class UserAPI {
             algoService.waitForConfirmation(txId, 6);
 
         } else {
-            //TODO manage the exception
-            txId = "error";
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Error:" + txResponse.message());
         }
 
-        //TODO return a java object
-        return "{\"TxId\":\"" + txId + "\"}";
     }
-
-
-    @PostMapping(value = "/v1/timeslots/{id}/{amount}", produces="application/json")
-    @ResponseBody
-    public String consumeTicket(@PathVariable long id, @PathVariable long amount,
-                                 Principal principal) throws Exception{
-
-        com.algorand.algosdk.account.Account comsumerAccount = algoService.getAccount(principal.getName());
-        com.algorand.algosdk.account.Account archiveAccount = algoService.getArchiveAccount();
-
-        // Check if the archive account has opted in
-        algoService.checkOptIn(id, archiveAccount);
-
-        //TODO check execute first
-        TransactionParametersResponse params = algoService.getClient().TransactionParams().execute().body();
-
-//        TxNoteMessage txNoteMessage = new TxNoteMessage(
-//                "You miss 100% of the shots you don’t take",
-//                "Wayne Gretzky");
-        byte[] encodedTxMsg = Encoder.encodeToMsgPack("");
-
-        // consumer consume timeslots
-        com.algorand.algosdk.transaction.Transaction ticketTx = com.algorand.algosdk.transaction.Transaction
-                .AssetTransferTransactionBuilder()
-                .sender(comsumerAccount.getAddress())
-                .assetReceiver(archiveAccount.getAddress())
-                .assetIndex(id)
-                .suggestedParams(params)
-                .note(encodedTxMsg)
-                .assetAmount(amount)
-                .build();
-
-        SignedTransaction signedTicket = comsumerAccount.signTransaction(ticketTx);
-
-        byte[] encodedTicketTx = Encoder.encodeToMsgPack(signedTicket);
-
-        Response<PostTransactionsResponse> txResponse =
-                algoService.getClient().RawTransaction().rawtxn(encodedTicketTx).execute();
-
-        String txId;
-        if (txResponse.isSuccessful()) {
-            txId = txResponse.body().txId;
-            logger.info("Transaction id: ", txId);
-            // write transaction to node
-            algoService.waitForConfirmation(txId, 6);
-
-        } else {
-            //TODO manage the exception
-            txId = "error";
-        }
-
-        //TODO Return a real asset
-        return "{\"TxId\":\"" + txId + "\"}";
-    }
-
-
 
 
 }

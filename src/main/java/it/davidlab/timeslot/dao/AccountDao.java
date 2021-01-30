@@ -1,10 +1,9 @@
 package it.davidlab.timeslot.dao;
 
 
-import javax.persistence.Column;
-import javax.persistence.Entity;
-import javax.persistence.Id;
-import javax.persistence.Table;
+import it.davidlab.timeslot.component.AttributeEncryptor;
+
+import javax.persistence.*;
 
 @Entity
 @Table(name = "ACCOUNT")
@@ -13,8 +12,13 @@ public class AccountDao {
 
     @Id @Column(length = 50, nullable = false)
     private String username;
-    @Column(length = 80, nullable = false) private String address;
-    @Column(length = 250, nullable = false) private String passphrase;
+
+    @Column(length = 80, nullable = false)
+    private String address;
+
+    @Column(length = 250, nullable = false)
+    @Convert(converter = AttributeEncryptor.class)
+    private String passphrase;
 
     public AccountDao() {
     }

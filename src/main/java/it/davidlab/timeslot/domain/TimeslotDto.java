@@ -1,12 +1,9 @@
 package it.davidlab.timeslot.domain;
 
 
-import it.davidlab.timeslot.domain.AssetType;
-import it.davidlab.timeslot.domain.TsLocation;
-
 import java.util.concurrent.TimeUnit;
 
-public class AssetInfo {
+public class TimeslotDto {
 
     private long assetId;
     private String unitName;
@@ -16,16 +13,16 @@ public class AssetInfo {
     private long startValidity;
     private long endValidity;
     private long duration;
-    private TimeUnit timeUnit;
+    private TimeslotUnit timeslotUnit;
     private String description;
-    private TsLocation tsLocation;
+    private TimeslotLocation timeslotLocation;
     private long price;
-    private AssetType type;
+    private TimeslotType type;
 
 
-    public AssetInfo(long assetId, String unitName, String assetName, String url, long amount, long startValidity,
-                     long endValidity, long duration, TimeUnit timeUnit, String description, TsLocation tsLocation,
-                     long price, AssetType type) {
+    public TimeslotDto(long assetId, String unitName, String assetName, String url, long amount, long startValidity,
+                       long endValidity, long duration, TimeslotUnit timeUnit, String description, TimeslotLocation timeslotLocation,
+                       long price, TimeslotType type) {
         this.assetId = assetId;
         this.unitName = unitName;
         this.assetName = assetName;
@@ -34,9 +31,9 @@ public class AssetInfo {
         this.startValidity = startValidity;
         this.endValidity = endValidity;
         this.duration = duration;
-        this.timeUnit = timeUnit;
+        this.timeslotUnit = timeUnit;
         this.description = description;
-        this.tsLocation = tsLocation;
+        this.timeslotLocation = timeslotLocation;
         this.price = price;
         this.type = type;
     }
@@ -77,8 +74,8 @@ public class AssetInfo {
         return duration;
     }
 
-    public TimeUnit getTimeUnit() {
-        return timeUnit;
+    public TimeslotUnit getTimeslotUnit() {
+        return timeslotUnit;
     }
 
     public String getDescription() {
@@ -89,12 +86,12 @@ public class AssetInfo {
         return price;
     }
 
-    public AssetType getType() {
+    public TimeslotType getType() {
         return type;
     }
 
-    public TsLocation getTsLocation() {
-        return tsLocation;
+    public TimeslotLocation getTsLocation() {
+        return timeslotLocation;
     }
 
 }

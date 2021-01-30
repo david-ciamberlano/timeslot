@@ -7,4 +7,7 @@ import org.springframework.stereotype.Service;
 public interface AccountRepo extends CrudRepository<AccountDao, String> {
 
     AccountDao getByUsername(String username);
+
+    AccountDao getByAddress(String address);
+
 }

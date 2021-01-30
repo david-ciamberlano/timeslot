@@ -1,7 +1,7 @@
 package it.davidlab.timeslot.domain;
 
 
-public class AssetModel {
+public class TimeslotModel {
 
     private String creatorAddress;
     private boolean defaultFrozen;
@@ -10,14 +10,14 @@ public class AssetModel {
     private long assetTotal;
     private int assetDecimals;
     private String url;
-    private TimeslotProps timeslotProperties;
+    private TimeslotProperties timeslotProperties;
 
-    public AssetModel() {
+    public TimeslotModel() {
     }
 
-    public AssetModel(String creatorAddress, boolean defaultFrozen, String unitName,
-                      String assetName, long assetTotal, int assetDecimals,
-                      String url, TimeslotProps timeslotProperties) {
+    public TimeslotModel(String creatorAddress, boolean defaultFrozen, String unitName,
+                         String assetName, long assetTotal, int assetDecimals,
+                         String url, TimeslotProperties timeslotProperties) {
         this.creatorAddress = creatorAddress;
         this.defaultFrozen = defaultFrozen;
         this.unitName = unitName;
@@ -56,7 +56,7 @@ public class AssetModel {
         return this.url;
     }
 
-    public TimeslotProps getTimeslotProperties() {
+    public TimeslotProperties getTimeslotProperties() {
         return timeslotProperties;
     }
 }
