@@ -13,7 +13,7 @@ public class AccountDao {
     @Id @Column(length = 50, nullable = false)
     private String username;
 
-    @Column(length = 80, nullable = false)
+    @Column(length = 80, nullable = false, unique = true)
     private String address;
 
     @Column(length = 250, nullable = false)

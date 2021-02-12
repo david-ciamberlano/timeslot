@@ -246,7 +246,7 @@ public class AdminAPI {
                 timeslotUnit, price, timeslotLocation, TimeslotType.PAIR, description);
 
         byte[] encAssetTProps = Encoder.encodeToMsgPack(timeslotParams);
-        byte[] propsHashT = Encoder.encodeToBase64(DigestUtils.md5(encAssetTProps)).getBytes(StandardCharsets.UTF_8);
+//        byte[] propsHashT = Encoder.encodeToBase64(DigestUtils.md5(encAssetTProps)).getBytes(StandardCharsets.UTF_8);
         String assetTName = "_" + assetName;
         String unitTName = "_" + unitName;
 

@@ -7,9 +7,14 @@ import javax.persistence.*;
 @Table(name = "USERS")
 public class UserDao {
 
-    @Id @Column(length = 50, nullable = false) private String username;
-    @Column(length = 50, nullable = false) private String password;
-    @Column(nullable = false, columnDefinition = "TINYINT", length = 1) private boolean enabled;
+    @Id @Column(length = 50, nullable = false)
+    private String username;
+
+    @Column(length = 80, nullable = false)
+    private String password;
+
+    @Column(nullable = false, columnDefinition = "TINYINT", length = 1)
+    private boolean enabled;
 
     @OneToOne(cascade = CascadeType.ALL)
     @JoinColumn(name = "username", referencedColumnName = "username")
