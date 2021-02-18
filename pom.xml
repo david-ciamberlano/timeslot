@@ -10,7 +10,7 @@
 	</parent>
 	<groupId>it.davidlab</groupId>
 	<artifactId>timeslot</artifactId>
-	<version>0.0.1-SNAPSHOT</version>
+	<version>0.2</version>
 	<name>timeslot</name>
 	<description>Timeslot management using Algorand Blockchain</description>
 

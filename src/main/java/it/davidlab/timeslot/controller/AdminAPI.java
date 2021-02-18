@@ -9,6 +9,7 @@ import com.algorand.algosdk.transaction.TxGroup;
 import com.algorand.algosdk.util.Encoder;
 import com.algorand.algosdk.v2.client.common.Response;
 import com.algorand.algosdk.v2.client.model.AssetHolding;
+import com.algorand.algosdk.v2.client.model.Enums;
 import com.algorand.algosdk.v2.client.model.PostTransactionsResponse;
 import com.algorand.algosdk.v2.client.model.TransactionParametersResponse;
 import io.swagger.annotations.Api;
@@ -42,7 +43,7 @@ public class AdminAPI {
     private AlgoService algoService;
     private UserService userService;
 
-    private static final Logger logger = LoggerFactory.getLogger(AdminAPI.class);
+    private final Logger logger = LoggerFactory.getLogger(AdminAPI.class);
 
     public AdminAPI(AlgoService algoService, UserService userService) {
         this.userService = userService;
@@ -166,15 +167,13 @@ public class AdminAPI {
                 price, timeslotLocation, TimeslotType.TICKET, description);
 
         byte[] encAssetProps = Encoder.encodeToMsgPack(tsParams);
-        String assetRName = assetName;
-        String unitRName = unitName;
 
         Transaction txTicket = Transaction.AssetCreateTransactionBuilder()
                 .sender(adminAccount.getAddress())
                 .assetTotal(assetTotal)
                 .assetDecimals(assettDecimals)
-                .assetUnitName(unitRName)
-                .assetName(assetRName)
+                .assetUnitName(unitName)
+                .assetName(assetName)
                 .url(url)
                 .manager(manager)
                 .reserve(reserve)
@@ -201,7 +200,7 @@ public class AdminAPI {
 
         if (txResponse.isSuccessful()) {
             txId = txResponse.body().txId;
-            logger.info("Transaction id: ", txId);
+            logger.info("Transaction id: {}", txId);
             algoService.waitForConfirmation(txId, 6);
 
         } else {
@@ -327,6 +326,34 @@ public class AdminAPI {
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Transaction not accepted");
         }
 
+    }
+
+
+    @Operation(summary = "Get transactions", description = "Get transactions related to the specified asset")
+    @GetMapping(path = "/v1/timeslots/{id}/transactions", produces = "application/json")
+    @ResponseBody
+    public List<TransactionDto> getTransactions(@PathVariable long id,
+                                                @RequestParam(required = false) String sender,
+                                                @RequestParam(required = false) String receiver,
+                                                @RequestParam(required = false) String noteprefix,
+                                                Principal principal) throws Exception {
+
+        com.algorand.algosdk.account.Account currentAccount = algoService.getAccount(principal.getName());
+
+        List<com.algorand.algosdk.v2.client.model.Transaction> txs = algoService.getIndexerClient()
+                .lookupAccountTransactions(currentAccount.getAddress()).txType(Enums.TxType.AXFER)
+                .assetId(id).execute().body().transactions;
+
+
+        List<TransactionDto> transactionDtos = txs.stream()
+                .map(t -> algoService.getTxParams(t, id))
+                .filter(t -> t.getAmount() > 0)
+                .filter(t -> noteprefix != null ? t.getNote().startsWith(noteprefix) : true)
+                .filter(t -> receiver != null ? t.getReceiverUser().equals(receiver) : true)
+                .filter(t -> sender != null ? t.getSenderUser().equals(sender) : true)
+                .collect(Collectors.toList());
+
+        return transactionDtos;
     }
 
 

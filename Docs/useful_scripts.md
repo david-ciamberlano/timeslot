@@ -1,4 +1,4 @@
-## How to encode the Password woth BCrypt
+## How to encode the Password with BCrypt
 ```jshelllanguage
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 
@@ -29,5 +29,4 @@ base64.b64encode(
   "algoPassphrase": "hazard camp vapor chapter rather impose lawsuit promote bid confirm pig radar witness rich lake ginger surface suggest luggage drill day adult pole about cat",
   "administrator": true
 }
-
 ```

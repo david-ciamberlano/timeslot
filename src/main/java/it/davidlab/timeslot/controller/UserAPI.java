@@ -1,7 +1,5 @@
 package it.davidlab.timeslot.controller;
 
-
-import ch.qos.logback.classic.spi.IThrowableProxy;
 import com.algorand.algosdk.crypto.Address;
 import com.algorand.algosdk.crypto.Digest;
 import com.algorand.algosdk.transaction.SignedTransaction;
@@ -55,14 +53,14 @@ public class UserAPI {
     @Operation(summary = "get timeslot list {available | owned}")
     @GetMapping(path = "/v1/timeslots", produces = "application/json")
     @ResponseBody
-    public List<TimeslotDto> timeslotList(@RequestParam String f,
+    public List<TimeslotDto> timeslotList(@RequestParam String filter,
                                           @RequestParam(required = false) Optional<String> namePrefix,
                                           Principal principal) throws Exception {
 
         Address accountAddress;
 
         // at least one between 'available' and 'owned' is required
-        switch (f) {
+        switch (filter) {
             case "available":
                 accountAddress = algoService.getAdminAddress();
                 break;

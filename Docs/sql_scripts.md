@@ -27,43 +27,37 @@ create table account(
 
 ```
 
-## Insert Data
+## Init Database
 
 ```SQL
 
-INSERT INTO users (username, password, enabled) VALUES
-('admin','$2a$10$Y1OQ3JCE05olIuVER0i7peeJSccHr4P2e2EIslecXat6tqmxyGd46', TRUE);
-
-INSERT INTO account (username, address, passphrase) VALUES
-('admin', '2626GBPAKSW7AGQZ35BJDR3KFRR6HDZNY57TETUJWZHFNCBRBDUATAM44E',
- 'ramp tiny spell since buffalo person meadow another fatal salt chalk into uncover pink sing escape maple slight infant nation critic crop air above tourist');
-
-INSERT INTO authorities (username, authority)
-values ('admin', 'ROLE_ADMIN');
-
-
 
 INSERT INTO users (username, password, enabled) VALUES
-('user1','$2a$10$QL6bJw8E9/uWCIOjMuhWVezuVhD1g3PapS3Z.BZfoGNuZWtQzTo4a	', TRUE);
-
-INSERT INTO account (username, address, passphrase) VALUES
-('user1', '4JXP3IICEHDLYCIJ3IBKAEKQVIFYLN2DFGOKCXYVXKM77BN6K6JFTMTIY4',
- 'cover infant item glare grass category chronic urban happy swear feed hazard trap allow spray liberty glue top thought fan weapon aunt thumb able process');
+('init','$2a$10$Y1OQ3JCE05olIuVER0i7peeJSccHr4P2e2EIslecXat6tqmxyGd46', TRUE);
 
 INSERT INTO authorities (username, authority)
-values ('user1', 'ROLE_USER');
+values ('init', 'ROLE_ADMIN');
 
 
 
-INSERT INTO users (username, password, enabled) VALUES
-('archive','$2a$10$Y1OQ3JCE05olIuVER0i7peeJSccHr4P2e2EIslecXat6tqmxyGd46', TRUE);
 
-INSERT INTO account (username, address, passphrase) VALUES
-('archive', 'DC3LME5VSI33RQ3M6IOZH67MJZXCJQOK4HCGRANZJGRATEFDZ4MXTOPH3Y',
- 'tent minor camp exile laptop detect way choice damp imitate hybrid lottery ready wool plate decorate dose noise logic winner begin car pitch above left');
+```
 
-INSERT INTO authorities (username, authority)
-values ('archive', 'ROLE_ADMIN');
 
+## Init users via Rest Api
+
+```
+POST /admin/v1/user
+
+{
+  "username": "admin",
+  "password": "admin",
+  "algoAddress": "2626GBPAKSW7AGQZ35BJDR3KFRR6HDZNY57TETUJWZHFNCBRBDUATAM44E",
+  "algoPassphrase": "ramp tiny spell since buffalo person meadow another fatal salt chalk into uncover pink sing escape maple slight infant nation critic crop air above tourist",
+  "administrator": true
+}
+
+
+curl -X POST "http://localhost:9696/admin/v1/user" -H  "accept: */*" -H  "Content-Type: application/json" -d "{\"username\":\"admin\",\"password\":\"admin\",\"algoAddress\":\"2626GBPAKSW7AGQZ35BJDR3KFRR6HDZNY57TETUJWZHFNCBRBDUATAM44E\",\"algoPassphrase\":\"ramp tiny spell since buffalo person meadow another fatal salt chalk into uncover pink sing escape maple slight infant nation critic crop air above tourist\",\"administrator\":true}"
 
 ```
