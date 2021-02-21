@@ -59,6 +59,25 @@ public class AdminAPI {
     }
 
 
+    @Operation(summary = "Send algos to a User")
+    @PostMapping(path = "/v1/algo/send/{amount}/to/{user}")
+    @ResponseStatus(HttpStatus.OK)
+    @ResponseBody
+    public void setAlgoToUser(@PathVariable long amount, @PathVariable String user) {
+
+        Account receiverAccount;
+        try {
+            receiverAccount = algoService.getAccount(user);
+            algoService.sendAlgo(receiverAccount, amount);
+        }
+        catch (Exception e) {
+            logger.error(e.getMessage());
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Transaction not accepted");
+        }
+
+    }
+
+
     @Operation(summary = "Get available/archived timeslots")
     @GetMapping(path = "/v1/timeslots")
     @ResponseBody
@@ -92,7 +111,7 @@ public class AdminAPI {
 
 
     @Operation(summary = "send timeslots to a username")
-    @PostMapping(value = "/v1/timeslots/{id}/send/{amount}/to/{username}")
+    @PostMapping(value = "/v1/timeslots/{id}/send")
     public void sendTimeslot(Principal principal, @PathVariable long id,
                              @RequestBody TimeslotTransferDto timeslotTransfer) throws Exception {
 
@@ -338,11 +357,7 @@ public class AdminAPI {
                                                 @RequestParam(required = false) String noteprefix,
                                                 Principal principal) throws Exception {
 
-        com.algorand.algosdk.account.Account currentAccount = algoService.getAccount(principal.getName());
-
-        List<com.algorand.algosdk.v2.client.model.Transaction> txs = algoService.getIndexerClient()
-                .lookupAccountTransactions(currentAccount.getAddress()).txType(Enums.TxType.AXFER)
-                .assetId(id).execute().body().transactions;
+        List<com.algorand.algosdk.v2.client.model.Transaction> txs = algoService.getAssetsTransaction(id);
 
 
         List<TransactionDto> transactionDtos = txs.stream()

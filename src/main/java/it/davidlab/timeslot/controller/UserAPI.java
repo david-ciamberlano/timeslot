@@ -131,7 +131,6 @@ public class UserAPI {
     @GetMapping(path = "/v1/timeslots/{id}/transactions", produces = "application/json")
     @ResponseBody
     public List<TransactionDto> getTransactions(@PathVariable long id,
-                                                @RequestParam(required = false) String sender,
                                                 @RequestParam(required = false) String receiver,
                                                 @RequestParam(required = false) String noteprefix,
                                                 Principal principal) throws Exception {
@@ -148,7 +147,6 @@ public class UserAPI {
                 .filter(t -> t.getAmount() > 0)
                 .filter(t -> noteprefix != null ? t.getNote().startsWith(noteprefix) : true)
                 .filter(t -> receiver != null ? t.getReceiverUser().equals(receiver) : true)
-                .filter(t -> sender != null ? t.getSenderUser().equals(sender) : true)
                 .collect(Collectors.toList());
 
         return transactionDtos;

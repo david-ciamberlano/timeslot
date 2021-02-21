@@ -24,10 +24,6 @@ import java.security.GeneralSecurityException;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 
 @Service
 public class AlgoService {
@@ -207,6 +203,13 @@ public class AlgoService {
         return new com.algorand.algosdk.account.Account(consumerAccount.getPassphrase());
     }
 
+    public AccountDao getNewAccount(String username) throws Exception{
+        com.algorand.algosdk.account.Account newAccount = new com.algorand.algosdk.account.Account();
+
+        return new AccountDao(username,
+                newAccount.getAddress().toString(), newAccount.toMnemonic());
+    }
+
 
     public com.algorand.algosdk.account.Account getAdminAccount() throws GeneralSecurityException {
         AccountDao consumerAccount = accountRepo.getByUsername(adminUser);
@@ -303,9 +306,20 @@ public class AlgoService {
                 .build();
 
         SignedTransaction signedTx = optinAccount.signTransaction(tx);
-        String txId = client.RawTransaction().rawtxn(Encoder.encodeToMsgPack(signedTx)).execute().body().txId;
+        //TODO check execute
+        Response<PostTransactionsResponse> txResponse =
+                client.RawTransaction().rawtxn(Encoder.encodeToMsgPack(signedTx)).execute();
 
-        waitForConfirmation(txId, 6);
+        String txId;
+        if (txResponse.isSuccessful()) {
+            txId = txResponse.body().txId;
+            logger.info("Transaction id: ", txId);
+            // write transaction to node
+            waitForConfirmation(txId, 6);
+        } else {
+            //TODO Custom Exception
+            throw new Exception("Transaction Error");
+        }
 
         return txId;
     }
@@ -330,6 +344,64 @@ public class AlgoService {
             //TODO Custom Exception
             throw new Exception("Transaction Error");
         }
+    }
+
+    /**
+     * Send Algo to an account
+     * @param receiverAccount
+     * @param amount
+     * @throws Exception
+     */
+    public void sendAlgo(com.algorand.algosdk.account.Account receiverAccount, long amount) throws Exception {
+
+        long mAlgoAmount = amount * 1000000L; //converted in microAlgorand
+
+        String note = "Hello World";
+        TransactionParametersResponse params = client.TransactionParams().execute().body();
+        com.algorand.algosdk.transaction.Transaction tx =
+                com.algorand.algosdk.transaction.Transaction.PaymentTransactionBuilder()
+                .sender(getAdminAddress())
+                .note(note.getBytes())
+                .amount(mAlgoAmount)
+                .receiver(receiverAccount.getAddress())
+                .suggestedParams(params)
+                .build();
+
+        SignedTransaction signedTx = getAdminAccount().signTransaction(tx);
+        //TODO check execute
+        Response<PostTransactionsResponse> txResponse =
+                client.RawTransaction().rawtxn(Encoder.encodeToMsgPack(signedTx)).execute();
+
+        String txId;
+        if (txResponse.isSuccessful()) {
+            txId = txResponse.body().txId;
+            logger.info("Transaction id: ", txId);
+            // write transaction to node
+            waitForConfirmation(txId, 6);
+        } else {
+            //TODO Custom Exception
+            throw new Exception("Transaction Error");
+        }
+
+    }
+
+
+    public List<com.algorand.algosdk.v2.client.model.Transaction>
+                        getAssetsTransaction(long assetId) throws Exception {
+
+        Response<TransactionsResponse> txResponse = getIndexerClient().lookupAssetTransactions(assetId)
+                    .txType(Enums.TxType.AXFER).execute();
+
+        List<com.algorand.algosdk.v2.client.model.Transaction> txs;
+
+        if (txResponse.isSuccessful()) {
+            return txResponse.body().transactions;
+
+        } else {
+            //TODO Custom Exception
+            throw new Exception("Transaction Error");
+        }
+
     }
 
 
