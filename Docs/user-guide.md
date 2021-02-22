@@ -148,6 +148,8 @@ A professional wants to offer online advices.
 He would like to schedule a  few slots each week, each lasting one hour, dedicated to this activity .  
 He wants to receive only one client at a time, so he needs a solution that does not allow more than one people to book the same time slot.
 
+**NOTE**: in the video folder there is a video showing these steps (timeslot_2-use-case-1.mp4)
+
 ### Step 1 - [Admin] Create new Timeslots
 **NOTE**: you have to login as "admin" in the swagger UI (click on the small padlock on the right).
 You can create a new Timeslot for each advice hour, using the rest api:
@@ -184,19 +186,25 @@ You can create more Timeslots simply changing some parameters in the json.
 
 ### Step 2 -  [Admin] Check the timeslot created
 You can check Timeslots created in the step 1 using the REST Api:
+
 `GET /admin/v1/timeslots`
+
 The f parameter could be "available" or "owned".  For this Use case you can use "available" and check if the new created Timeslots are in the List returned by the REST API.
 
 ### Step 3 - [User] take the list of the available Timeslots
 Authenticate as a user in the Swagger UI.
 You can obtain the list of the available Timeslots by using the REST api:
+
 `GET /user/v1/timeslots`
+
 You can use the "available" keyword for the filter and you can put the prefix of the unit Name in the prefix parameter, in our case "JS".
 Take note of the Asset Id of the Timeslot you are interested in.
 
 ### Step 4 - [User] Take a Timeslot
 Using the Asset Id from the step 3, we can Take (buy)  a Timeslot.
+
 `POST /user/v1/timeslots/{id}/take/{amount}`
+
 You must put the Timeslot Id in the "id" field and how many Timeslots you want to buy in the "amount" field. In our case we can only buy 1 Timeslot.
 
 ### Step 5 - [User] Check owned Timeslots
@@ -205,13 +213,17 @@ You can log-in as Admin and check (see Step 2) that the timeslot is no longer av
 
 ### Step 6 - [User] Spend the Timeslot
 You can spend the Timeslot just befor the start of the advice session (to certify the you are the user who bought the Timeslot):
+
 `POST /user/v1/timeslots/{id}/spend/{amount}`
+
 You have to specify the Timeslot id (taken in the step 3), the amount (1 in this case) and a note to the admin.
 If the transaction is successful you will receive the http 202 code.
 
 ### Step 7 - [Admin] Check the spent Timeslot
 The administrator can check if you spent the correct timeslot before starting the advice session:
+
 `GET /admin/v1/timeslots/{id}/transactions`
+
 This REST api returns the list of all the transaction related to the specified Timeslot (asset).
 To filter the list, you can specify the following filters: sender username, receiver username, note prefix.
 
