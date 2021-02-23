@@ -19,6 +19,11 @@ OpenJDK Runtime Environment (build 15.0.1+9-18)
 OpenJDK 64-Bit Server VM (build 15.0.1+9-18, mixed mode, sharing)
 ```
 
+**Important**: 'admin' and 'archive' accounts must have Algos in their wallet to work properly
+You can send Algo from the admin account to other users using the following API:
+
+`POST /admin/v1/algo/send/{amount}/to/{user}`
+
 ## application.properties file
 This file contains the configuration parameters for the application.
 
@@ -92,8 +97,6 @@ You can create these users using the Swagger Interface:
 `http://localhost:9696/swagger-ui.html`
 
 In order to do any operation, you must log in. In  the swagger interface you can click on the small padlock on the right side of the page and enter the username and password of the init user  (Username:init -  PW:admin) or of any other administrator.
-
-![](&&&SFLOCALFILEPATH&&&Schermata%202021-02-18%20alle%2019.20.00.png)
 
 You can now create the 2 most important users: admin and archive (you can change these names in the configuration file).
 
